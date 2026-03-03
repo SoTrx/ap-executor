@@ -1,0 +1,75 @@
+services:
+  devcontainer:
+    image: mcr.microsoft.com/devcontainers/python:3.14-trixie
+    volumes:
+      - ../..:/workspaces:cached
+    #    network_mode: service:db
+    command: sleep infinity
+    environment:
+      - POSTGRES_HOST=executor-mathe-provsql
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=mathe
+      - POSTGRES_USER=provdemo
+      - POSTGRES_PASSWORD=provdemo
+      - POSTGRES_TIMESCALE_HOST=executor-mathe-provsql
+      - POSTGRES_TIMESCALE_PORT=5432
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      # Ensures that the databases are started before the API
+      executor-mathe-provsql:
+        condition: service_healthy
+      executor-redis:
+        condition: service_healthy
+
+  # --- PostgreSQL Service with ProvSQL compiled from source ---
+  executor-mathe-provsql:
+    build:
+      context: ..
+      dockerfile: dependencies/postgres-provsql/Dockerfile
+      args:
+        FIXTURES_PATH: fixtures/postgres-seed
+    container_name: executor-mathe-provsql
+    ports:
+      - "5432:5432"
+    volumes:
+      - wp4_poc_postgres_data:/var/lib/postgresql/data
+      - ../fixtures/postgres-seed:/docker-entrypoint-initdb.d
+    environment:
+      - POSTGRES_USER=provdemo
+      - POSTGRES_PASSWORD=provdemo
+      - POSTGRES_DB=mathe
+    restart: always
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U provdemo -d mathe" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --- Redis Service ---
+  executor-redis:
+    image: redis:7-alpine
+    container_name: executor-redis
+    restart: always
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --- Flower Dashboard (Celery monitoring) ---
+  executor-flower:
+    image: mher/flower:master
+    container_name: executor-flower
+    environment:
+      - CELERY_BROKER_URL=redis://executor-redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://executor-redis:6379/0
+    ports:
+      - "5555:5555"
+    restart: always
+    depends_on:
+      executor-redis:
+        condition: service_healthy
+
+volumes:
+  wp4_poc_postgres_data:

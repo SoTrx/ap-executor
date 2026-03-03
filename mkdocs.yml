@@ -1,0 +1,56 @@
+site_name: ap-executor
+
+site_description: AP Executor – execute Analytical Pattern operators
+site_author: DataGems EOSC
+edit_uri: edit/main/docs/
+repo_name: datagems-eosc/ap-executor
+
+copyright: Maintained by <a href="https://datagems-eosc.com">datagems-eosc</a>.
+
+nav:
+  - Home: index.md
+  - Architecture: architecture.md
+  - Configuration: configuration.md
+  - Usage: usage.md
+  - Development: development.md
+  - Modules: modules.md
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths:
+            - "ap_executor"
+theme:
+  name: material
+  feature:
+    tabs: true
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: white
+      accent: deep orange
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: deep orange
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  icon:
+    repo: fontawesome/brands/github
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/datagems-eosc/ap-executor
+
+markdown_extensions:
+  - toc:
+      permalink: true
+  - pymdownx.arithmatex:
+      generic: true

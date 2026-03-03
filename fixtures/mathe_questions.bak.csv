@@ -1,0 +1,36 @@
+question|query|comment
+"What topics did I perform worst in last week?"|"SELECT topic, AVG(answer::int) AS success_rate FROM mathe.assessment WHERE date >= now() - interval '7 days' GROUP BY topic ORDER BY success_rate ASC;"|Added ORDER BY to actually return the worst-performing topics.
+"Show the progress of the Civil Engineering class in Linear Optimization compared to the Economics class."||No notion of class, course, or program (Civil Engineering, Economics) exists in the schema.
+"Who are the students at risk of failing based on last month's activities?"|"SELECT student_id, success_rate FROM (SELECT student_id, AVG(answer::int) AS success_rate FROM mathe.assessment WHERE date >= now() - interval '1 month' GROUP BY student_id) AS subquery WHERE success_rate < 0.5;"|Assumes answer=1 means correct and <0.5 success rate implies risk of failing.
+"What condition is necessary for a linear system to have a unique solution?"||Conceptual math question; not answerable via SQL.
+"I didn't understand the difference between definite and indefinite integrals."||Conceptual math explanation; no data query applicable.
+"I'm stuck on eigenvalues. Is there a short video that explains this?"|"SELECT pm.* FROM mathe.platform_materials pm JOIN mathe.material_type mt ON pm.type = mt.id WHERE mt.description='video' AND pm.title ILIKE '%eigenvalue%' ORDER BY pm.clicks DESC LIMIT 1;"|Valid query assuming material titles mention eigenvalues.
+"What should I study right after mastering the graphic method?"|"SELECT pm.* FROM mathe.platform_materials pm JOIN mathe.platform_material_keyword pmk ON pm.id=pmk.platformmaterialid JOIN mathe.platform__keywords pk ON pmk.platformkeywordid=pk.id WHERE pk.name='simplex method';"|Assumes pedagogical sequence (graphical → simplex) is encoded via keywords, which may not be guaranteed.
+"What is the average time it takes students to solve optimization problems?"|"SELECT AVG(a.duration) FROM mathe.assessment a JOIN mathe.platform__topic t ON a.topic = t.id WHERE t.name='Linear Optimization';"|Assumes duration is filled and topic names match exactly.
+"Show my performance per topic"|"SELECT topic, AVG(answer::int) AS success_rate FROM mathe.assessment WHERE student_id = 36 GROUP BY topic;"|Requires a bound parameter 36.
+"Show my performance per subtopic"|"SELECT subtopic, AVG(answer::int) AS success_rate FROM mathe.assessment WHERE student_id = 36 GROUP BY subtopic;"|Subtopic can be NULL; may need WHERE subtopic IS NOT NULL depending on usage.
+"Find all the topics in which the majority of students failed."|"SELECT topic FROM (SELECT topic, AVG(answer::int) AS success_rate FROM mathe.assessment GROUP BY topic) AS subquery WHERE success_rate < 0.5;"|Interprets “majority failed” as average success rate < 50%.
+"Find all the questions in topic xxxxx where the majority of students failed (fail rate > 0.8)"|"SELECT question_id FROM (SELECT question_id, AVG(CASE WHEN answer=0 THEN 1 ELSE 0 END) AS fail_rate FROM mathe.assessment WHERE topic = :topic GROUP BY question_id) AS subquery WHERE fail_rate > 0.8;"|Valid assuming answer=0 means incorrect.
+"Find all the questions in topic xxxxx where the majority of students answer correctly (success rate > 0.8)"|"SELECT question_id FROM (SELECT question_id, AVG(CASE WHEN answer=1 THEN 1 ELSE 0 END) AS success_rate FROM mathe.assessment WHERE topic = :topic GROUP BY question_id) AS subquery WHERE success_rate > 0.8;"|Valid assuming binary grading in answer.
+"Find the written material most accessed by the students in the topic xxx"|"SELECT pm.* FROM mathe.platform_materials pm JOIN mathe.material_type mt ON pm.type=mt.id JOIN mathe.material_top_sub mts ON pm.id=mts.platformmaterialid WHERE mt.description='written' AND mts.platformtopicid=:topic ORDER BY pm.clicks DESC LIMIT 1;"|Valid; relies on clicks as proxy for access.
+"Find the video most accessed by the students in the topic xxx"|"SELECT pm.* FROM mathe.platform_materials pm JOIN mathe.material_type mt ON pm.type=mt.id JOIN mathe.material_top_sub mts ON pm.id=mts.platformmaterialid WHERE mt.description='video' AND mts.platformtopicid=:topic ORDER BY pm.clicks DESC LIMIT 1;"|Same assumption as above.
+"Compare the performance of the students of university A and B, per topic"||No university information exists for students in the schema.
+"Compare the performance of the students of country A and B, per topic"||No country or location information exists for students.
+"Compare the performance of the male and female student in the subtopic matrix and determinants"||No gender information exists for students.
+"How can I solve a linear system 4x4?"||Conceptual math question; cannot be answered via SQL.
+"Give me a material to study the Green's Theorem"|"SELECT * FROM mathe.platform_materials WHERE title ILIKE '%Green%' ORDER BY clicks DESC LIMIT 1;"|Valid but relies on title text only; could be improved with keywords if available.
+"How can I evaluate the determinant of a matrix?"||Conceptual math explanation; not queryable.
+"What are the basic concepts of learning linear optimization?"||Pedagogical question; not tied to database content.
+"How do I begin my study about linear optimization?"||Advisory question; no direct SQL mapping.
+"What kind of materials can I find on the mathE platform?"|"SELECT DISTINCT mt.description FROM mathe.platform_materials pm JOIN mathe.material_type mt ON pm.type=mt.id;"|Valid overview query.
+"Give the most elementary materials about limits."|"SELECT pm.* FROM mathe.platform_materials pm JOIN mathe.platform_material_keyword pmk ON pm.id=pmk.platformmaterialid JOIN mathe.platform__keywords pk ON pmk.platformkeywordid=pk.id WHERE pk.name='limits' ORDER BY pm.clicks DESC LIMIT 3;"|“Elementary” is inferred via popularity, not difficulty level.
+"When do I use the graphical method to solve a linear problem?"||Conceptual learning question; no SQL mapping.
+"How can I use the graphical method to solve linear problems?"||Conceptual learning question; no SQL mapping.
+"How should the questions be assigned to the student?"||System/algorithm design question; schema does not encode assignment logic.
+"What is the role of the objective function in finding the optimum solution in a linear optimization problem?"||Pure theory question.
+"What is the role of constraints in a linear optimization problem?"||Pure theory question.
+"How is the optimal solution usually found in a linear optimization problem?"||Pure theory question.
+"What happens if the feasible region is unbounded?"||Pure theory question.
+"What happen if no feasible region exists?"||Pure theory question.
+"Give me a hard example of matrices operations in ppt"||Material difficulty (hard) and format (ppt) are not explicitly encoded; cannot be reliably queried.
+"How many student of engineer course there are registed at MathE?"|"SELECT COUNT(DISTINCT student_id) AS num_students FROM mathe.assessment;"|Engineering course information is missing; this query only counts active students with assessments.
