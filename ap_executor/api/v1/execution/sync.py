@@ -15,9 +15,9 @@ from ap_executor.api.v1.dependencies.ap_parser import (
     SchemaName,
 )
 from ap_executor.di import get_db_connection_for_ap
-from ap_executor.services.executor import ExecutorService
 from ap_executor.models.execution import ExecutionResult
 from ap_executor.models.pg_json import PgJson
+from ap_executor.services.executor import ExecutorService
 
 logger = getLogger(__name__)
 
@@ -37,7 +37,8 @@ async def execute_ap_sync(
     Returns:
         ``ExecutionResult`` with per-operator outcomes.
     """
-    logger.info("Synchronous execution requested for AP '%s' on db '%s'", ap_name, db_name)
+    logger.info(
+        "Synchronous execution requested for AP '%s' on db '%s'", ap_name, db_name)
 
     connection_factory = get_db_connection_for_ap(db_name)
 

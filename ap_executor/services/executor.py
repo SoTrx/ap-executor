@@ -60,7 +60,8 @@ class ExecutorService:
             An ``ExecutionResult`` summarising the outcome of every operator.
         """
         operators = self._resolve_execution_order(ap)
-        logger.info("Resolved %d operators for execution in AP '%s'", len(operators), ap_name or "unnamed")
+        logger.info("Resolved %d operators for execution in AP '%s'",
+                    len(operators), ap_name or "unnamed")
 
         result = ExecutionResult(
             ap_name=ap_name,
@@ -144,7 +145,8 @@ class ExecutorService:
             return await self._execute_generic_command(node, schema_name, op_name)
 
         # Non-executable operator (e.g. Annotate placeholder) – skip gracefully
-        logger.info("Skipping non-executable operator '%s' (%s)", op_name, node.labels)
+        logger.info("Skipping non-executable operator '%s' (%s)",
+                    op_name, node.labels)
         return OperatorResult(
             operator_id=node.id,
             operator_name=op_name,
@@ -171,7 +173,8 @@ class ExecutorService:
             cursor = await self.conn.execute(f"SET search_path TO {schema_name}, public")
             cursor = await self.conn.execute(query)
             rows = await cursor.fetchall()
-            columns = [desc.name for desc in cursor.description] if cursor.description else []
+            columns = [
+                desc.name for desc in cursor.description] if cursor.description else []
             result_data = [dict(zip(columns, row)) for row in rows]
             return OperatorResult(
                 operator_id=node.id,

@@ -11,7 +11,6 @@ from ap_executor.api.v1.dependencies.ap_parser import (
 )
 from ap_executor.models.pg_json import PgJson
 
-
 SAMPLE_AP = {
     "nodes": [
         {

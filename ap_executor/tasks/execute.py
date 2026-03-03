@@ -7,8 +7,8 @@ from typing import List, Optional
 
 from ap_executor.celery_app import celery_app
 from ap_executor.di import get_db_connection_for_ap
-from ap_executor.services.executor import ExecutorService
 from ap_executor.models.pg_json import PgJson
+from ap_executor.services.executor import ExecutorService
 
 logger = logging.getLogger(__name__)
 

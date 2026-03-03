@@ -1,12 +1,12 @@
 """Unit tests for the executor service – operator ordering."""
-import pytest
-import pytest_asyncio
 from unittest.mock import AsyncMock, MagicMock
 
-from ap_executor.services.executor import ExecutorService
+import pytest
+import pytest_asyncio
+
 from ap_executor.models.execution import ExecutionStatus, OperatorStatus
 from ap_executor.models.pg_json import PgJson
-
+from ap_executor.services.executor import ExecutorService
 
 SAMPLE_AP_WITH_ORDER = {
     "nodes": [
