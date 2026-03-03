@@ -10,13 +10,13 @@ from typing import List, Optional
 
 from psycopg import AsyncConnection
 
-from ap_executor.types.execution import (
+from ap_executor.models.execution import (
     ExecutionResult,
     ExecutionStatus,
     OperatorResult,
     OperatorStatus,
 )
-from ap_executor.types.pg_json import PgJson, PgJsonNode
+from ap_executor.models.pg_json import PgJson, PgJsonNode
 
 logger = logging.getLogger(__name__)
 

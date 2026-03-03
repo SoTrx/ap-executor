@@ -9,7 +9,7 @@ from ap_executor.api.v1.dependencies.ap_parser import (
     extract_schema_name,
     extract_table_names,
 )
-from ap_executor.types.pg_json import PgJson
+from ap_executor.models.pg_json import PgJson
 
 
 SAMPLE_AP = {

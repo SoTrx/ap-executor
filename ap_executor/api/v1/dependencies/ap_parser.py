@@ -4,7 +4,7 @@ from typing import Annotated, List, Optional
 
 from fastapi import Depends, HTTPException, status
 
-from ap_executor.types.pg_json import PgJson, PgJsonNode
+from ap_executor.models.pg_json import PgJson, PgJsonNode
 
 logger = getLogger(__name__)
 

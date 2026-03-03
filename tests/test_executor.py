@@ -4,8 +4,8 @@ import pytest_asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 from ap_executor.services.executor import ExecutorService
-from ap_executor.types.execution import ExecutionStatus, OperatorStatus
-from ap_executor.types.pg_json import PgJson
+from ap_executor.models.execution import ExecutionStatus, OperatorStatus
+from ap_executor.models.pg_json import PgJson
 
 
 SAMPLE_AP_WITH_ORDER = {

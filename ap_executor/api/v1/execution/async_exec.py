@@ -16,7 +16,7 @@ from ap_executor.api.v1.dependencies.ap_parser import (
     SchemaName,
 )
 from ap_executor.di import REDIS_ENABLED
-from ap_executor.types.pg_json import PgJson
+from ap_executor.models.pg_json import PgJson
 
 logger = getLogger(__name__)
 
