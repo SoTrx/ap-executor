@@ -1,0 +1,24 @@
+# Never send a host-built venv into the build context: `COPY . /app` would
+# overwrite the container-native `.venv` that `uv sync` creates inside the
+# image with one full of absolute shebang paths from the host (e.g.
+# `.venv/bin/pytest`'s `#!/path/on/host/.venv/bin/python3`), which breaks
+# any console-script entry point once the venv is relocated to /app.
+.venv/
+
+__pycache__/
+*.py[oc]
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+wheels/
+*.egg-info
+
+.git/
+.github/
+.devcontainer/
+.vscode/
+.claude/
+.copilot/
+
+.env

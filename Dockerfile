@@ -20,7 +20,7 @@ FROM builder AS test
 
 RUN uv sync --all-groups --frozen
 
-CMD [ "uv", "run", "pytest" ]
+CMD [ "uv", "run", "pytest", "-m", "not e2e" ]
 
 # Actual production image
 FROM builder AS prod
