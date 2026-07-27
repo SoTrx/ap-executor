@@ -4,13 +4,11 @@ from os import getenv
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI
 from tomllib import loads as loads_toml
 
 from ap_executor.api.v1.routes import router
 from ap_executor.di import container_lifespan
-from ap_executor.errors.exceptions import DatabaseNotFoundError
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -24,19 +22,11 @@ ROOT_PATH = getenv("ROOT_PATH", "")
 
 app = FastAPI(
     title="AP Executor API",
-    description="API for executing Analytical Pattern operators step by step against PostgreSQL databases",
+    description="API for orchestrating Analytical Pattern operator execution via Consul-discovered operator implementations",
     version=project_version,
     lifespan=container_lifespan,
     root_path=ROOT_PATH,
 )
-
-
-@app.exception_handler(DatabaseNotFoundError)
-async def database_not_found_handler(request: Request, exc: DatabaseNotFoundError):
-    return JSONResponse(
-        status_code=404,
-        content={"detail": exc.message},
-    )
 
 
 @app.get("/")

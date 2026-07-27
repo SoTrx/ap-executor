@@ -1,0 +1,225 @@
+{
+  "$schema": "https://raw.githubusercontent.com/datagems-eosc/moma-management/refs/tags/v2.3.0/moma_management/domain/schema/moma.schema.json",
+  "nodes": [
+    {
+      "id": "c0000000-0000-0000-0000-000000000001",
+      "labels": [
+        "Analytical_Pattern"
+      ],
+      "properties": {
+        "name": "NL Query and Schema Extraction",
+        "description": "Translates a natural-language query to SQL and independently extracts the DB schema.",
+        "process": "query",
+        "publishedDate": "2026-06-15"
+      }
+    },
+    {
+      "id": "a6a60000-0000-4000-8000-000000000002",
+      "labels": [
+        "Text_To_SQL_Operator",
+        "Operator"
+      ],
+      "properties": {
+        "name": "Text to SQL",
+        "description": "Translates a natural-language string into a safe SQL query.",
+        "version": "1.0.0",
+        "step": 1,
+        "inputs": [
+          {
+            "name": "nl",
+            "type": "string",
+            "required": true,
+            "default": ""
+          }
+        ],
+        "outputs": [
+          {
+            "name": "query",
+            "type": "string",
+            "required": true,
+            "default": ""
+          }
+        ]
+      }
+    },
+    {
+      "id": "a6a60000-0000-4000-8000-000000000003",
+      "labels": [
+        "Schema_Analyzer_Operator",
+        "Operator"
+      ],
+      "properties": {
+        "name": "Schema Analyzer",
+        "description": "Connects to the target database and returns a textual summary of its schema.",
+        "version": "1.0.0",
+        "step": 2,
+        "inputs": [
+          {
+            "name": "database_url",
+            "type": "string",
+            "required": true,
+            "default": ""
+          }
+        ],
+        "outputs": [
+          {
+            "name": "schema",
+            "type": "string",
+            "required": true,
+            "default": ""
+          }
+        ]
+      }
+    },
+    {
+      "id": "c0000000-0000-0000-0000-000000000002",
+      "labels": [
+        "ResultType",
+        "string"
+      ],
+      "properties": {
+        "name": "query"
+      }
+    },
+    {
+      "id": "c0000000-0000-0000-0000-000000000003",
+      "labels": [
+        "ResultType",
+        "string"
+      ],
+      "properties": {
+        "name": "schema"
+      }
+    },
+    {
+      "id": "a7a70000-0000-4000-8000-000000000002",
+      "labels": [
+        "SQL_With_Context_Operator",
+        "Operator"
+      ],
+      "properties": {
+        "name": "SQL With Context",
+        "description": "Produces a plain-language explanation of an SQL query given the target schema.",
+        "version": "1.0.0",
+        "step": 1,
+        "inputs": [
+          {
+            "name": "query",
+            "type": "string",
+            "required": true,
+            "default": ""
+          },
+          {
+            "name": "schema",
+            "type": "string",
+            "required": true,
+            "default": ""
+          }
+        ],
+        "outputs": [
+          {
+            "name": "explanation",
+            "type": "string",
+            "required": true,
+            "default": ""
+          }
+        ]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "c0000000-0000-0000-0000-000000000001",
+      "to": "a6a60000-0000-4000-8000-000000000002",
+      "labels": [
+        "consist_of"
+      ]
+    },
+    {
+      "from": "c0000000-0000-0000-0000-000000000001",
+      "to": "a6a60000-0000-4000-8000-000000000003",
+      "labels": [
+        "consist_of"
+      ]
+    },
+    {
+      "from": "c0000000-0000-0000-0000-000000000001",
+      "to": "a7a70000-0000-4000-8000-000000000002",
+      "labels": [
+        "consist_of"
+      ]
+    },
+    {
+      "from": "a6a60000-0000-4000-8000-000000000003",
+      "to": "a6a60000-0000-4000-8000-000000000002",
+      "labels": [
+        "follows"
+      ],
+      "properties": {}
+    },
+    {
+      "from": "a6a60000-0000-4000-8000-000000000002",
+      "labels": [
+        "output"
+      ],
+      "to": "c0000000-0000-0000-0000-000000000002",
+      "properties": {
+        "mapping": {
+          "to['query']": "from['outputs']['query']"
+        }
+      }
+    },
+    {
+      "from": "c0000000-0000-0000-0000-000000000002",
+      "labels": [
+        "input"
+      ],
+      "to": "a7a70000-0000-4000-8000-000000000002",
+      "properties": {
+        "mapping": {
+          "to['inputs']['query']": "from['query']"
+        }
+      }
+    },
+    {
+      "from": "a6a60000-0000-4000-8000-000000000003",
+      "labels": [
+        "output"
+      ],
+      "to": "c0000000-0000-0000-0000-000000000003",
+      "properties": {
+        "mapping": {
+          "to['schema']": "from['outputs']['schema']"
+        }
+      }
+    },
+    {
+      "from": "c0000000-0000-0000-0000-000000000003",
+      "labels": [
+        "input"
+      ],
+      "to": "a7a70000-0000-4000-8000-000000000002",
+      "properties": {
+        "mapping": {
+          "to['inputs']['schema']": "from['schema']"
+        }
+      }
+    },
+    {
+      "from": "a7a70000-0000-4000-8000-000000000002",
+      "labels": [
+        "follows"
+      ],
+      "to": "a6a60000-0000-4000-8000-000000000002",
+      "properties": {}
+    },
+    {
+      "from": "a7a70000-0000-4000-8000-000000000002",
+      "labels": [
+        "follows"
+      ],
+      "to": "a6a60000-0000-4000-8000-000000000003",
+      "properties": {}
+    }
+  ]
+}

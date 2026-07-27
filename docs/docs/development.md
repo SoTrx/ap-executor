@@ -4,11 +4,11 @@
 
 ### With Dev Container (Recommended)
 
-Open in VS Code with the Dev Containers extension. PostgreSQL and Redis are pre-configured.
+Open in VS Code with the Dev Containers extension. Consul and a Dapr sidecar are pre-configured.
 
 ### Local Setup
 
-Requirements: Python 3.14, `uv` package manager, PostgreSQL
+Requirements: Python 3.14, `uv` package manager
 
 ```bash
 # Install dependencies
@@ -16,7 +16,7 @@ uv sync --all-groups
 
 # Configure environment
 cp .env.example .env
-# Edit .env with your database connection details
+# Edit .env if you need to override any defaults
 
 # Run service
 uv run ap_executor/main.py
@@ -30,20 +30,7 @@ uv run ap_executor/main.py
 pytest tests/
 ```
 
-Tests use `testcontainers` to spin up a PostgreSQL instance automatically — no manual setup needed.
-
----
-
-## Running a standalone Celery worker
-
-For scale-out or to run the worker separately from the API:
-
-```bash
-docker run --rm \
-  --env-file .env \
-  ap-executor:prod \
-  uv run celery -A ap_executor.celery_app:celery_app worker --loglevel=info
-```
+Tests run entirely against mocks (`httpx.MockTransport` for Consul/manifest/operator HTTP calls, a fake Dapr workflow client for the API layer) — no external services needed.
 
 ---
 
@@ -51,17 +38,34 @@ docker run --rm \
 
 ```
 ap_executor/
-├── api/v1/              # API endpoints
-│   ├── execution/
-│   │   ├── sync.py      # POST /execute (synchronous)
-│   │   └── async_exec.py # POST /execute/async (asynchronous)
-│   ├── dependencies/    # FastAPI dependencies (AP parser)
-│   └── health.py        # Health check endpoints
-├── tasks/               # Celery tasks
-├── services/            # Business logic (executor service)
-├── types/               # Type definitions (PG-JSON, execution results)
-├── errors/              # Custom exceptions
-├── di.py                # Dependency injection & DB connection
-├── celery_app.py        # Celery application
-└── main.py              # FastAPI application entry point
+├── api/v1/
+│   ├── analytical_patterns/
+│   │   ├── routes.py       # wires /aps/execute, /aps/execute/async, /aps/execute/async/{task_id}
+│   │   ├── exec_sync.py    # POST /execute (blocks on workflow completion)
+│   │   └── exec_async.py   # POST /execute/async + GET /execute/async/{task_id}
+│   ├── health.py           # /health, /ready endpoints
+│   └── routes.py           # aggregates the above under /api/v1
+├── domain/
+│   └── ap_instance.py      # ApInstance – iter_operators() (topo order), resolve_operator_input_values()
+├── services/
+│   ├── operator_resolver/
+│   │   ├── operator_resolver.py   # OperatorResolver – registry + manifest fetch -> ResolvedOperator
+│   │   ├── resolved_operator.py   # ResolvedOperator dataclass
+│   │   ├── factory.py             # default_operator_resolver() – shared prod construction (di.py + operator_execution.py)
+│   │   ├── errors.py              # UnsupportedOperatorError
+│   │   ├── manifest/              # OperatorManifest schema, HttpManifestRetriever
+│   │   └── registry/              # OperatorRegistry protocol, ConsulRegistryClient, ServiceInstance
+│   └── executor/
+│       ├── execution.py           # OperatorInvocationInput, OperatorResult, ExecutionResult, statuses
+│       ├── execution_handle.py    # ExecutionHandle – in-flight/completed operator invocation state
+│       ├── errors.py              # OperatorExecutionError
+│       └── strategies/            # OperatorExecutionStrategy protocol, http_sync.py, http_async_polling.py, factory.py
+├── workflows/
+│   ├── ap_execution.py       # Dapr workflow orchestrator (must stay I/O-free)
+│   ├── operator_execution.py # Dapr activities – all I/O happens here
+│   └── runtime.py            # module-level WorkflowRuntime instance (wfr) + dapr-ext-workflow alias patch
+├── di.py                   # FastAPI lifespan – starts the Dapr WorkflowRuntime, exposes DaprWorkflowClient + OperatorResolver
+└── main.py                 # FastAPI application entry point
 ```
+
+See [Architecture](architecture.md) for how these pieces interact, and [Registering an Operator](operators.md) for the operator-side contract (manifest + Consul registration).

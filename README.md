@@ -2,12 +2,12 @@
 
 [![License](https://img.shields.io/github/license/datagems-eosc/ap-executor)](https://img.shields.io/github/license/datagems-eosc/ap-executor)
 
-A FastAPI service that **executes the operators** defined in an Analytical Pattern (AP) step by step against PostgreSQL databases.
+A FastAPI service that **orchestrates execution of the operators** defined in an Analytical Pattern (AP) graph, dispatching each operator to an externally-deployed operator microservice discovered via Consul, using Dapr Workflow for orchestration.
 
 Given an AP in PG-JSON format, the service:
 1. Parses the operator graph
 2. Resolves the execution order (topological sort via `follows` edges)
-3. Executes each operator against the target database
+3. For each operator, resolves a healthy implementation via Consul, fetches its manifest, and invokes it over HTTP
 4. Returns per-operator results
 
 ---
@@ -18,25 +18,18 @@ Given an AP in PG-JSON format, the service:
 graph TD
     Client["Client (HTTP)"]
     API["FastAPI API"]
-    Redis["Redis (Celery Broker)"]
+    WF["Dapr Workflow Engine"]
+    Activity["Activity: Consul resolve -> manifest -> HTTP strategy"]
+    Operator["Operator microservice"]
 
-    Client -->|POST /execute| API
-    Client -->|POST /execute/async| API
-    API -->|dispatch task| Redis
-
-    subgraph Workers["Celery Workers (N)"]
-        Worker1["Celery Worker 1"]
-        WorkerN["Celery Worker N"]
-    end
-
-    Redis -->|consume task| Worker1
-    Redis -->|consume task| WorkerN
-
-    Worker1 -->|SQL queries| PG1["PostgreSQL"]
-    WorkerN -->|SQL queries| PG1
+    Client -->|POST /aps/execute| API
+    Client -->|POST /aps/execute/async| API
+    API -->|schedule workflow| WF
+    WF -->|one activity per operator| Activity
+    Activity -->|HTTP call| Operator
 ```
 
-By default, the FastAPI process starts an **embedded Celery worker** in a daemon thread — no separate process required. For production scale-out, additional standalone workers can be launched independently.
+Each AP execution is a Dapr workflow instance: the orchestrator (`ap_execution_workflow`) walks the operator graph in topological order and, for every operator, calls a Dapr activity. That activity is the only place I/O happens — it resolves the operator via Consul, fetches its `/.well-known/operator.json` manifest, and dispatches the call using the manifest-declared strategy (`sync` single call, or `async` start+poll). See [Architecture](docs/docs/architecture.md) for the full sequence diagrams, and [Registering an Operator](docs/docs/operators.md) for the manifest contract and how to register a new operator implementation.
 
 ---
 
@@ -46,21 +39,18 @@ Copy `.env.example` to `.env` and fill in the values.
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `REDIS_BROKER_URI` | No | `redis://redis:6379/0` | Redis URL used as Celery broker and result backend |
-| `USE_EMBEDDED_CELERY_WORKER` | No | `true` | Start a Celery worker inside the FastAPI process |
-| `POSTGRES_USER` | Yes | — | PostgreSQL username |
-| `POSTGRES_PASSWORD` | Yes | — | PostgreSQL password |
-| `POSTGRES_HOST` | Yes | — | Primary PostgreSQL host |
-| `POSTGRES_PORT` | No | `5432` | Primary PostgreSQL port |
-| `POSTGRES_TIMESCALE_HOST` | No | — | Fallback PostgreSQL host |
-| `POSTGRES_TIMESCALE_PORT` | No | `5433` | Fallback PostgreSQL port |
+| `CONSUL_HTTP_ADDR` | No | `http://localhost:8500` | Consul agent address used for operator service discovery |
+| `DAPR_RUNTIME_HOST` | No | `localhost` | Dapr sidecar host |
+| `DAPR_GRPC_PORT` | No | `50001` | Dapr sidecar gRPC port |
+| `DAPR_HTTP_PORT` | No | `3500` | Dapr sidecar HTTP port |
+| `SYNC_EXECUTION_TIMEOUT_SECONDS` | No | `60` | How long `POST /aps/execute` blocks before returning 504 and pointing the caller at the async endpoint |
 | `ROOT_PATH` | No | `""` | API root path when behind a reverse proxy |
 
 ---
 
 ## Quick Start
 
-The repository ships a [Dev Container](https://containers.dev/) that provides Python, Redis, and PostgreSQL out of the box.
+The repository ships a [Dev Container](https://containers.dev/) that provides Consul and a Dapr sidecar out of the box.
 
 ```bash
 # 1. Open in VS Code Dev Container (recommended)
@@ -72,20 +62,11 @@ uv sync --all-groups
 # 3. Copy and edit environment variables
 cp .env.example .env
 
-# 4. Start the service (embedded Celery worker starts automatically)
+# 4. Start the service
 uv run ap_executor/main.py
 ```
 
 The API is then available at `http://localhost:5000`. Interactive docs at `http://localhost:5000/docs`.
-
-### Running a standalone Celery worker
-
-```bash
-docker run --rm \
-  --env-file .env \
-  ap-executor:prod \
-  uv run celery -A ap_executor.celery_app:celery_app worker --loglevel=info
-```
 
 ### Running tests
 
@@ -93,7 +74,7 @@ docker run --rm \
 pytest tests/
 ```
 
-Tests use `testcontainers` to spin up a PostgreSQL instance automatically — no manual setup needed.
+Tests run entirely against mocks (`httpx.MockTransport`, a fake Dapr workflow client) — no external services required.
 
 ---
 
@@ -101,8 +82,8 @@ Tests use `testcontainers` to spin up a PostgreSQL instance automatically — no
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `POST` | `/api/v1/execute` | Execute an AP synchronously |
-| `POST` | `/api/v1/execute/async` | Execute an AP asynchronously (returns `task_id`) |
-| `GET`  | `/api/v1/execute/async/{task_id}` | Poll for async execution result |
+| `POST` | `/api/v1/aps/execute` | Execute an AP synchronously |
+| `POST` | `/api/v1/aps/execute/async` | Execute an AP asynchronously (returns `task_id`) |
+| `GET`  | `/api/v1/aps/execute/async/{task_id}` | Poll for async execution result |
 | `GET`  | `/api/v1/health` | Liveness check |
-| `GET`  | `/api/v1/ready` | Readiness check (DB + Redis) |
+| `GET`  | `/api/v1/ready` | Readiness check (Consul + Dapr sidecar) |

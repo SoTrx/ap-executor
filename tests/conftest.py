@@ -1,68 +1,64 @@
-from dataclasses import dataclass
-from pathlib import Path
-from typing import AsyncGenerator
-from urllib.parse import urlparse, urlunparse
+"""Shared fixtures for the integration-style tests.
+
+These tests exercise the real code paths (manifest fetch, execution strategies,
+the executor's orchestration + dataflow) against **real dummy operator apps**
+wired in over :class:`httpx.ASGITransport` — actual ASGI routing, no
+``MockTransport`` handlers and no network sockets.
+"""
+from types import SimpleNamespace
+from typing import Any, Callable, Dict
 
 import pytest
-import pytest_asyncio
-from psycopg import AsyncConnection
-from psycopg_pool import AsyncConnectionPool
-from testcontainers.core.image import DockerImage
-from testcontainers.postgres import PostgresContainer
+from fastapi import FastAPI, Request
 
 
-@dataclass
-class TestSchema:
-    table: str = "assessment"
-    schema: str = "mathe"
+def _serve_manifest(app: FastAPI, manifest: Dict[str, Any]) -> None:
+    @app.get("/.well-known/operator.json")
+    async def _manifest() -> Dict[str, Any]:  # noqa: WPS430 (nested is fine for a dummy)
+        return manifest
 
 
-@pytest.fixture(scope="session")
-def test_schema() -> TestSchema:
-    return TestSchema()
+def _make_sync_operator_app(
+    manifest: Dict[str, Any], on_execute: Callable[[Dict[str, Any]], Dict[str, Any]]
+) -> FastAPI:
+    """A dummy sync operator: serves its manifest and one ``execute`` endpoint."""
+    app = FastAPI()
+    _serve_manifest(app, manifest)
+
+    @app.post(manifest["execution"]["endpoint"])
+    async def _execute(request: Request) -> Dict[str, Any]:
+        return on_execute(await request.json())
+
+    return app
 
 
-@pytest.fixture(scope="function")
-def postgres_container():
-    """Spin up a PostgreSQL container from the local Dockerfile."""
-    project_root = Path(__file__).parent.parent
+def _make_async_operator_app(
+    manifest: Dict[str, Any], result: Dict[str, Any], *, running_polls: int = 1
+) -> FastAPI:
+    """A dummy async operator: start returns a job id, poll reports ``running``
+    ``running_polls`` times, then ``done`` with ``result``."""
+    app = FastAPI()
+    _serve_manifest(app, manifest)
+    polls: Dict[str, int] = {}
 
-    with DockerImage(
-        path=str(project_root),
-        dockerfile_path="dependencies/postgres-provsql/Dockerfile",
-        tag="testdb:latest",
-        clean_up=False,
-        buildargs={"FIXTURES_PATH": "fixtures/postgres-seed"},
-    ) as image:
-        with PostgresContainer(
-            image=str(image),
-            username="provdemo",
-            password="provdemo",
-            dbname="mathe",
-        ) as postgres:
-            yield postgres
+    @app.post(manifest["execution"]["start_endpoint"])
+    async def _start(request: Request) -> Dict[str, Any]:
+        polls["job-1"] = 0
+        return {"id": "job-1"}
 
+    poll_path = manifest["execution"]["poll_endpoint"].replace("{id}", "{job_id}")
 
-@pytest_asyncio.fixture
-async def db_pool(postgres_container: PostgresContainer) -> AsyncGenerator[AsyncConnectionPool]:
-    """Provides a connection pool to the test database."""
-    qs = postgres_container.get_connection_url()
-    parsed = urlparse(qs)
-    scheme = parsed.scheme.split("+", 1)[0]
-    qs = urlunparse(parsed._replace(scheme=scheme))
+    @app.get(poll_path)
+    async def _poll(job_id: str) -> Dict[str, Any]:
+        polls[job_id] += 1
+        if polls[job_id] <= running_polls:
+            return {"status": "running"}
+        return {"status": "done", "result": result}
 
-    pool = AsyncConnectionPool(
-        conninfo=qs,
-        min_size=1,
-        max_size=5,
-    )
-    await pool.open()
-    yield pool  # type: ignore
-    await pool.close()
+    return app
 
 
-@pytest_asyncio.fixture
-async def db_connection(db_pool: AsyncConnectionPool) -> AsyncGenerator[AsyncConnection]:
-    """Returns a database connection from the pool."""
-    async with db_pool.connection() as conn:
-        yield conn
+@pytest.fixture
+def operator_apps() -> SimpleNamespace:
+    """Factory for dummy operator ASGI apps (``.sync(...)`` / ``.async_(...)``)."""
+    return SimpleNamespace(sync=_make_sync_operator_app, async_=_make_async_operator_app)

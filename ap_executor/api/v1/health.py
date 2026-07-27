@@ -1,37 +1,30 @@
 """Health and readiness check endpoints."""
 import os
-from typing import Literal
 
-from psycopg import AsyncConnection, OperationalError
+import httpx
+from fastapi.responses import JSONResponse
 
 
-async def _check_postgres(host: str | None, port: str, user: str | None, password: str | None) -> dict:
-    """Try to open a connection to the PostgreSQL server (using the default 'postgres' database)."""
-    if not host:
-        return {"status": "unconfigured"}
+async def _check_consul(consul_addr: str) -> dict:
+    """Check that the Consul agent (operator registry) is reachable."""
     try:
-        conn = await AsyncConnection.connect(
-            f"postgresql://{user}:{password}@{host}:{port}/postgres",
-            connect_timeout=5,
-        )
-        await conn.close()
+        async with httpx.AsyncClient(timeout=5.0) as http:
+            resp = await http.get(f"{consul_addr.rstrip('/')}/v1/status/leader")
+            resp.raise_for_status()
         return {"status": "reachable"}
-    except OperationalError as e:
+    except httpx.HTTPError as e:
         return {"status": "unreachable", "detail": str(e)}
 
 
-async def _check_redis(uri: str) -> dict:
-    """Ping the Redis instance."""
-    import redis.asyncio as aioredis
-
-    client = aioredis.from_url(uri, socket_connect_timeout=5)
+async def _check_dapr_sidecar(dapr_http_port: str) -> dict:
+    """Check that the local Dapr sidecar (workflow orchestration) is healthy."""
     try:
-        await client.ping()
+        async with httpx.AsyncClient(timeout=5.0) as http:
+            resp = await http.get(f"http://localhost:{dapr_http_port}/v1.0/healthz")
+            resp.raise_for_status()
         return {"status": "reachable"}
-    except Exception as e:
+    except httpx.HTTPError as e:
         return {"status": "unreachable", "detail": str(e)}
-    finally:
-        await client.aclose()
 
 
 async def health_check():
@@ -41,44 +34,24 @@ async def health_check():
 
 async def readiness_check():
     """
-    Readiness check – verifies that the PostgreSQL database and the Redis broker
-    are reachable before the service is considered ready to handle traffic.
+    Readiness check – verifies that Consul (operator registry) and the local
+    Dapr sidecar (workflow orchestration) are reachable before the service
+    is considered ready to handle traffic.
 
     Returns HTTP 200 with ``status: ready`` when all dependencies are reachable,
     or HTTP 503 with ``status: not_ready`` together with per-dependency details
     when at least one dependency is unavailable.
     """
-    from fastapi.responses import JSONResponse
+    consul_status = await _check_consul(os.getenv("CONSUL_HTTP_ADDR", "http://localhost:8500"))
+    dapr_status = await _check_dapr_sidecar(os.getenv("DAPR_HTTP_PORT", "3500"))
 
-    from ap_executor.di import REDIS_BROKER_URI, REDIS_ENABLED
-
-    user = os.getenv("POSTGRES_USER")
-    password = os.getenv("POSTGRES_PASSWORD")
-
-    postgres_status = await _check_postgres(
-        host=os.getenv("POSTGRES_HOST"),
-        port=os.getenv("POSTGRES_PORT", "5432"),
-        user=user,
-        password=password,
-    )
-
-    if REDIS_ENABLED:
-        # type: ignore[arg-type]
-        redis_status = await _check_redis(REDIS_BROKER_URI)
-    else:
-        redis_status = {"status": "unconfigured",
-                        "detail": "REDIS_BROKER_URI not set – async execution disabled"}
-
-    all_ready = all(
-        s["status"] in ("reachable", "unconfigured")
-        for s in (postgres_status, redis_status)
-    )
+    all_ready = all(s["status"] == "reachable" for s in (consul_status, dapr_status))
 
     body = {
         "status": "ready" if all_ready else "not_ready",
         "dependencies": {
-            "postgres": postgres_status,
-            "redis": redis_status,
+            "consul": consul_status,
+            "dapr_sidecar": dapr_status,
         },
     }
     return JSONResponse(content=body, status_code=200 if all_ready else 503)

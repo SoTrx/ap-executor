@@ -2,25 +2,26 @@
 
 [![License](https://img.shields.io/github/license/datagems-eosc/ap-executor)](https://img.shields.io/github/license/datagems-eosc/ap-executor)
 
-This is the documentation site for the AP Executor service. The service provides a RESTful API for executing the operators defined in an **Analytical Pattern (AP)** against PostgreSQL databases.
+This is the documentation site for the AP Executor service. The service provides a RESTful API for orchestrating execution of the operators defined in an **Analytical Pattern (AP)** graph, dispatching each operator to a Consul-discovered operator microservice via Dapr Workflow.
 
 ## What is the AP Executor?
 
-The AP Executor takes an Analytical Pattern as input, parses the operator graph, resolves the execution order, and runs each operator step by step against the target database.
+The AP Executor takes an Analytical Pattern as input, parses the operator graph, resolves the execution order, and runs each operator step by step against its own externally-deployed implementation.
 
 It supports:
-- **Synchronous execution** (`POST /execute`) — runs all operators and returns the full result inline
-- **Asynchronous execution** (`POST /execute/async`) — dispatches to a Celery worker and returns a `task_id` for polling
+- **Synchronous execution** (`POST /aps/execute`) — schedules a Dapr workflow instance and blocks until it completes (up to `SYNC_EXECUTION_TIMEOUT_SECONDS`), returning the full result inline
+- **Asynchronous execution** (`POST /aps/execute/async`) — schedules the same workflow and returns its instance id as `task_id` for polling
 
 ## Quick Links
 
 - [Configuration](configuration.md) - How to configure the service
 - [Architecture](architecture.md) - Technical architecture details
+- [Registering an Operator](operators.md) - How operator execution works and how to register a new operator
 - [Usage](usage.md) - API usage guide
 
 ## Working with Analytical Patterns (AP)
 
-The service processes **Analytical Patterns (AP)** in PG-JSON format — a graph structure with nodes and edges representing database operations.
+The service processes **Analytical Patterns (AP)** in PG-JSON format — a graph structure with nodes and edges. One `Analytical_Pattern` root node is connected via `consist_of` edges to one or more `Operator` nodes; `follows` edges between operators express ordering.
 
 ### Example AP Structure
 
@@ -28,53 +29,52 @@ The service processes **Analytical Patterns (AP)** in PG-JSON format — a graph
 {
   "nodes": [
     {
-      "id": "db-node-id",
-      "labels": ["Relational_Database"],
+      "id": "0a79a9c7-76f3-4f96-be42-e6818793f182",
+      "labels": ["Analytical_Pattern"],
       "properties": {
-        "contentUrl": "postgresql://user:pass@host/db",
-        "name": "mydb"
+        "name": "Text to SQL AP",
+        "description": "Takes a natural-language query and translates it into SQL.",
+        "process": "query"
       }
     },
     {
-      "id": "table-node-id",
-      "labels": ["Table"],
-      "properties": {"name": "public.students"}
-    },
-    {
-      "id": "query-node-id",
-      "labels": ["Operator", "SQL_Operator"],
+      "id": "1de6e343-6952-4361-a17f-e4a9f1eaeae2",
+      "labels": ["Text_To_SQL_Operator", "Operator"],
       "properties": {
-        "name": "Select students",
-        "query": "SELECT name FROM students WHERE grade > 80"
+        "name": "Text to SQL",
+        "version": "1.0.0",
+        "inputs": [{"name": "nl", "type": "string", "required": true}],
+        "outputs": [{"name": "query", "type": "string", "required": true}]
       }
     }
   ],
   "edges": [
-    {"from": "query-node-id", "to": "table-node-id", "labels": ["input"]},
-    {"from": "table-node-id", "to": "db-node-id", "labels": ["contain"]}
+    {"from": "0a79a9c7-76f3-4f96-be42-e6818793f182", "to": "1de6e343-6952-4361-a17f-e4a9f1eaeae2", "labels": ["consist_of"]}
   ]
 }
 ```
+
+This is a trimmed-down version of [`fixtures/01_ap_nl_to_sql.json`](https://github.com/datagems-eosc/ap-executor/blob/master/fixtures/01_ap_nl_to_sql.json) — see the `fixtures/` directory for more complete, runnable examples, including multi-operator chains.
 
 ### Endpoints
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `POST` | `/api/v1/execute` | Execute an AP synchronously |
-| `POST` | `/api/v1/execute/async` | Execute an AP asynchronously (returns `task_id`) |
-| `GET`  | `/api/v1/execute/async/{task_id}` | Poll for async execution result |
+| `POST` | `/api/v1/aps/execute` | Execute an AP synchronously |
+| `POST` | `/api/v1/aps/execute/async` | Execute an AP asynchronously (returns `task_id`) |
+| `GET`  | `/api/v1/aps/execute/async/{task_id}` | Poll for async execution result |
 | `GET`  | `/api/v1/health` | Liveness check |
-| `GET`  | `/api/v1/ready` | Readiness check (DB + Redis) |
+| `GET`  | `/api/v1/ready` | Readiness check (Consul + Dapr sidecar) |
 
 ## Getting Started
 
-The best solution is to use the provided `.devcontainer` configuration. PostgreSQL and Redis are pre-configured.
+The best solution is to use the provided `.devcontainer` configuration. Consul and a Dapr sidecar are pre-configured.
 
 ```bash
 # Requirements: Python 3.14, uv
 uv sync --all-groups
 cp .env.example .env
-# Fill in the required variables in .env
+# Fill in any variables you need to override in .env
 uv run ap_executor/main.py
 ```
 

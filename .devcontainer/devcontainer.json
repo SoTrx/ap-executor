@@ -6,27 +6,22 @@
     "features": {
         "ghcr.io/devcontainers-extra/features/uv:1": {},
         "ghcr.io/devcontainers-extra/features/ruff:2": {},
-        "ghcr.io/devcontainers/features/docker-in-docker:2": {
+        "ghcr.io/devcontainers/features/docker-in-docker:4": {
             "moby": false
         },
-        "ghcr.io/devcontainers-extra/features/apt-packages:1": {
-            "packages": "postgresql-client"
-        }
+        "ghcr.io/dapr/cli/dapr-cli:0": {}
     },
     "customizations": {
         "vscode": {
             "extensions": [
                 "ms-python.python",
-                "ms-ossdata.vscode-pgsql",
-                "github.copilot",
-                "github.copilot-chat",
                 "humao.rest-client",
                 "ms-python.vscode-pylance",
                 "charliermarsh.ruff",
                 "ms-python.bandit",
                 "ms-python.debugpy",
                 "yzhang.markdown-all-in-one",
-                "mechatroner.rainbow-csv"
+                "tamasfe.even-better-toml"
             ],
             "settings": {
                 "editor.defaultFormatter": "charliermarsh.ruff",

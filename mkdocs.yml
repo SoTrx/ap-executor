@@ -10,6 +10,7 @@ copyright: Maintained by <a href="https://datagems-eosc.com">datagems-eosc</a>.
 nav:
   - Home: index.md
   - Architecture: architecture.md
+  - Registering an Operator: operators.md
   - Configuration: configuration.md
   - Usage: usage.md
   - Development: development.md
