@@ -36,6 +36,24 @@ jobs:
           tags: |
             type=ref,event=tag
 
+      - name: Extract metadata (tags, labels) for the sidecar image
+        id: meta-sidecar
+        uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
+        with:
+          images: ${{ env.REGISTRY }}/sotrx/${{ env.IMAGE_NAME }}
+          flavor: suffix=-sidecar,onlatest=false
+          tags: |
+            type=ref,event=tag
+
+      - name: Extract metadata (tags, labels) for the magic_operator image
+        id: meta-magic-operator
+        uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
+        with:
+          images: ${{ env.REGISTRY }}/sotrx/${{ env.IMAGE_NAME }}
+          flavor: suffix=-magic-operator,onlatest=false
+          tags: |
+            type=ref,event=tag
+
       - name: Build testing Docker image
         id: build-test
         uses: docker/build-push-action@f2a1d5e99d037542a71f64918e516c093c6f3fc4
@@ -58,3 +76,23 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           target: prod
           labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Build and push sidecar Docker image
+        id: build-sidecar
+        uses: docker/build-push-action@f2a1d5e99d037542a71f64918e516c093c6f3fc4
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta-sidecar.outputs.tags }}
+          target: sidecar
+          labels: ${{ steps.meta-sidecar.outputs.labels }}
+
+      - name: Build and push magic_operator Docker image
+        id: build-magic-operator
+        uses: docker/build-push-action@f2a1d5e99d037542a71f64918e516c093c6f3fc4
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta-magic-operator.outputs.tags }}
+          target: magic-operator
+          labels: ${{ steps.meta-magic-operator.outputs.labels }}
