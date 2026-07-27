@@ -45,6 +45,26 @@ Copy `.env.example` to `.env` and adjust as needed for your environment (e.g. po
 | `OPERATOR_INPUTS` | `[]` | JSON blob → manifest `inputs` |
 | `OPERATOR_OUTPUTS` | `[]` | JSON blob → manifest `outputs` |
 
+## Magic Operator (reference/test)
+
+`magic_operator/` (see [`magic_operator/` — a fuller reference/test operator](operators.md#magic_operator--a-fuller-referencetest-operator)) is a separate process, paired 1:1 with a `sidecar/` instance just like a real operator. Run it with `uv run python magic_operator/main.py`.
+
+| Variable | Default | Description |
+|---|---|---|
+| `MAGIC_OPERATOR_NAME` | `Magic Operator` | descriptive name |
+| `MAGIC_OPERATOR_INPUTS` | `[]` | JSON array of `{name,type,required,default}` — the operator's own expected-inputs contract, validated on every request |
+| `MAGIC_OPERATOR_OUTPUT_NAME` | `response` | the single key the result dict is keyed under |
+| `MAGIC_OPERATOR_PROMPT_TEMPLATE` | *(required)* | `str.format`-style template; placeholders are the declared input names |
+| `MAGIC_OPERATOR_EXECUTION_MODE` | `sync_http` | `sync_http` (serves `POST /execute`) or `async_http` (serves `POST /jobs` + `GET /jobs/{id}`); `messaging` is rejected at startup — the executor's `ExecutionStrategyFactory` only supports `protocol: "http"` today |
+| `MAGIC_OPERATOR_LLM_PROVIDER` | `mock` | `mock` (deterministic, no network — the CI default) or `litellm` (real LLM call, requires the `llm` extra) |
+| `MAGIC_OPERATOR_LLM_MODEL` | — | required when `MAGIC_OPERATOR_LLM_PROVIDER=litellm` |
+| `MAGIC_OPERATOR_LLM_API_BASE` | *(unset)* | passed to `litellm.acompletion` |
+| `MAGIC_OPERATOR_LLM_API_KEY` | *(unset)* | omitted from the call entirely when unset |
+| `MAGIC_OPERATOR_LLM_TIMEOUT_SECONDS` | `30` | |
+| `MAGIC_OPERATOR_ASYNC_POLL_CYCLES` | `1` | number of `GET /jobs/{id}` calls that report `"running"` before `"done"` (no real delay — a counter, kept fast for CI) |
+| `MAGIC_OPERATOR_HOST` | `0.0.0.0` | bind host |
+| `MAGIC_OPERATOR_PORT` | `9000` | bind port — this is what a paired sidecar's `UPSTREAM_PORT` points at |
+
 ## Testing Configuration
 
 Tests run entirely against mocks — an `httpx.MockTransport` for HTTP calls (Consul, manifests, operator invocations) and a fake Dapr workflow client for the API layer. No external services (Consul, Dapr sidecar, or otherwise) are needed to run the suite:

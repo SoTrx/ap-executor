@@ -1,0 +1,203 @@
+# End-to-end CI stack: the real ap_executor service, a real Consul instance,
+# real Dapr Workflow infrastructure, and three magic_operator+sidecar pairs
+# wired together into the AP graph in fixtures/composed/magic_e2e.json.
+#
+# Usage:
+#   docker compose -f docker-compose.e2e.yml up -d --build
+#   uv run python scripts/wait_for_e2e_stack.py
+#   uv run pytest tests/e2e -m e2e
+#   docker compose -f docker-compose.e2e.yml down -v
+#
+# Deliberately a separate file/service-name namespace from
+# .devcontainer/docker-compose.yml (which is dev-only and couples its Dapr
+# sidecar to the devcontainer's own network namespace) so both stacks can run
+# on the same Docker daemon without colliding.
+services:
+  e2e-redis:
+    image: redis:8-alpine
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  e2e-consul:
+    image: hashicorp/consul:2.0
+    command: agent -dev -client=0.0.0.0 -ui
+    ports:
+      - "8500:8500"
+    healthcheck:
+      test: [ "CMD", "consul", "members" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  e2e-dapr-placement:
+    image: daprio/dapr:1.18.2
+    command: [ "./placement", "--port", "50005", "--log-level", "info" ]
+
+  e2e-dapr-scheduler:
+    image: daprio/dapr:1.18.2
+    command: [ "./scheduler", "--port", "50006", "--log-level", "info", "--etcd-data-dir", "/tmp/dapr-scheduler-data" ]
+
+  # --- The executor itself ------------------------------------------------
+  e2e-executor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: prod
+    ports:
+      - "5000:5000"
+    environment:
+      - CONSUL_HTTP_ADDR=http://e2e-consul:8500
+      - DAPR_RUNTIME_HOST=localhost
+      - DAPR_HTTP_PORT=3500
+      - DAPR_GRPC_PORT=50001
+      - SYNC_EXECUTION_TIMEOUT_SECONDS=30
+    depends_on:
+      e2e-consul:
+        condition: service_healthy
+      e2e-redis:
+        condition: service_healthy
+
+  e2e-executor-daprd:
+    image: daprio/daprd:1.18.2
+    command:
+      - "./daprd"
+      - "-app-id=ap-executor"
+      - "-app-port=5000"
+      - "-app-protocol=http"
+      - "-dapr-http-port=3500"
+      - "-dapr-grpc-port=50001"
+      - "-placement-host-address=e2e-dapr-placement:50005"
+      - "-scheduler-host-address=e2e-dapr-scheduler:50006"
+      - "-resources-path=/components"
+    volumes:
+      - ./.dapr/components-e2e:/components
+    # Standard Dapr self-hosted colocation: shares e2e-executor's network
+    # namespace so the app is reachable at localhost:5000 from daprd's POV.
+    network_mode: "service:e2e-executor"
+    depends_on:
+      e2e-executor:
+        condition: service_started
+      e2e-dapr-placement:
+        condition: service_started
+      e2e-dapr-scheduler:
+        condition: service_started
+
+  # --- Operator A: sync_http producer (topic -> summary) ------------------
+  e2e-magic-a:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: magic-operator
+    environment:
+      - MAGIC_OPERATOR_NAME=Magic Echo A
+      - MAGIC_OPERATOR_EXECUTION_MODE=sync_http
+      - MAGIC_OPERATOR_LLM_PROVIDER=mock
+      - MAGIC_OPERATOR_INPUTS=[{"name":"topic","type":"string","required":true}]
+      - MAGIC_OPERATOR_OUTPUT_NAME=summary
+      - "MAGIC_OPERATOR_PROMPT_TEMPLATE=Summarize the topic: {topic}"
+      - MAGIC_OPERATOR_PORT=9000
+
+  e2e-sidecar-a:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: sidecar
+    environment:
+      - CONSUL_HTTP_ADDR=http://e2e-consul:8500
+      - SIDECAR_SERVICE_NAME=Magic Echo A
+      - SIDECAR_ADVERTISE_ADDRESS=e2e-sidecar-a
+      - SIDECAR_PORT=8000
+      - UPSTREAM_HOST=e2e-magic-a
+      - UPSTREAM_PORT=9000
+      - OPERATOR_NAME=Magic Echo A
+      - OPERATOR_VERSION=1.0.0
+      # Must match e2e-magic-a's MAGIC_OPERATOR_EXECUTION_MODE=sync_http, which serves POST /execute.
+      - OPERATOR_EXECUTION={"mode":"sync","protocol":"http","endpoint":"/execute"}
+      - OPERATOR_INPUTS=[{"name":"topic","type":"string","required":true}]
+      - OPERATOR_OUTPUTS=[{"name":"summary","type":"string","required":true}]
+    depends_on:
+      e2e-consul:
+        condition: service_healthy
+      e2e-magic-a:
+        condition: service_started
+
+  # --- Operator B: async_http producer (audience -> tone) ------------------
+  e2e-magic-b:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: magic-operator
+    environment:
+      - MAGIC_OPERATOR_NAME=Magic Echo B
+      - MAGIC_OPERATOR_EXECUTION_MODE=async_http
+      - MAGIC_OPERATOR_ASYNC_POLL_CYCLES=1
+      - MAGIC_OPERATOR_LLM_PROVIDER=mock
+      - MAGIC_OPERATOR_INPUTS=[{"name":"audience","type":"string","required":true}]
+      - MAGIC_OPERATOR_OUTPUT_NAME=tone
+      - "MAGIC_OPERATOR_PROMPT_TEMPLATE=Pick a tone of voice for the audience: {audience}"
+      - MAGIC_OPERATOR_PORT=9000
+
+  e2e-sidecar-b:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: sidecar
+    environment:
+      - CONSUL_HTTP_ADDR=http://e2e-consul:8500
+      - SIDECAR_SERVICE_NAME=Magic Echo B
+      - SIDECAR_ADVERTISE_ADDRESS=e2e-sidecar-b
+      - SIDECAR_PORT=8000
+      - UPSTREAM_HOST=e2e-magic-b
+      - UPSTREAM_PORT=9000
+      - OPERATOR_NAME=Magic Echo B
+      - OPERATOR_VERSION=1.0.0
+      # Must match e2e-magic-b's MAGIC_OPERATOR_EXECUTION_MODE=async_http, which serves POST /jobs + GET /jobs/{job_id}.
+      - OPERATOR_EXECUTION={"mode":"async","protocol":"http","start_endpoint":"/jobs","poll_endpoint":"/jobs/{id}"}
+      - OPERATOR_INPUTS=[{"name":"audience","type":"string","required":true}]
+      - OPERATOR_OUTPUTS=[{"name":"tone","type":"string","required":true}]
+    depends_on:
+      e2e-consul:
+        condition: service_healthy
+      e2e-magic-b:
+        condition: service_started
+
+  # --- Operator C: sync_http consumer (summary + tone -> message) ----------
+  e2e-magic-c:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: magic-operator
+    environment:
+      - MAGIC_OPERATOR_NAME=Magic Combine
+      - MAGIC_OPERATOR_EXECUTION_MODE=sync_http
+      - MAGIC_OPERATOR_LLM_PROVIDER=mock
+      - MAGIC_OPERATOR_INPUTS=[{"name":"summary","type":"string","required":true},{"name":"tone","type":"string","required":true}]
+      - MAGIC_OPERATOR_OUTPUT_NAME=message
+      - "MAGIC_OPERATOR_PROMPT_TEMPLATE=Write a message summarizing '{summary}' in a '{tone}' tone."
+      - MAGIC_OPERATOR_PORT=9000
+
+  e2e-sidecar-c:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: sidecar
+    environment:
+      - CONSUL_HTTP_ADDR=http://e2e-consul:8500
+      - SIDECAR_SERVICE_NAME=Magic Combine
+      - SIDECAR_ADVERTISE_ADDRESS=e2e-sidecar-c
+      - SIDECAR_PORT=8000
+      - UPSTREAM_HOST=e2e-magic-c
+      - UPSTREAM_PORT=9000
+      - OPERATOR_NAME=Magic Combine
+      - OPERATOR_VERSION=1.0.0
+      - OPERATOR_EXECUTION={"mode":"sync","protocol":"http","endpoint":"/execute"}
+      - OPERATOR_INPUTS=[{"name":"summary","type":"string","required":true},{"name":"tone","type":"string","required":true}]
+      - OPERATOR_OUTPUTS=[{"name":"message","type":"string","required":true}]
+    depends_on:
+      e2e-consul:
+        condition: service_healthy
+      e2e-magic-c:
+        condition: service_started

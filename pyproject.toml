@@ -24,6 +24,9 @@ dependencies = [
     "moma-domain>=2.9.0",
 ]
 
+[project.optional-dependencies]
+llm = ["litellm>=1.55.0"]
+
 [dependency-groups]
 dev = [
     "pytest>=7.2.0",
@@ -44,10 +47,13 @@ build-backend = "hatchling.build"
 py-modules = ["ap_executor"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["ap_executor", "sidecar"]
+packages = ["ap_executor", "sidecar", "magic_operator"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "e2e: exercises the full docker-compose stack over real HTTP; excluded from the default run (see docs/docs/development.md)",
+]
 
 [tool.uv.sources]
 moma-domain = { url = "https://github.com/datagems-eosc/moma-management/releases/download/v2.9.0/moma_domain-2.9.0-py3-none-any.whl" }

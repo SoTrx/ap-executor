@@ -35,3 +35,13 @@ FROM builder AS sidecar
 RUN uv sync --frozen
 
 CMD [ "uv", "run", "python", "sidecar/main.py" ]
+
+# Magic operator image: reference/test operator (validates inputs, calls an
+# LLM through a pluggable provider) used by the e2e test suite. Built with
+# the `llm` extra so it can optionally run with a real litellm-backed
+# provider for manual testing, without a rebuild.
+FROM builder AS magic-operator
+
+RUN uv sync --frozen --extra llm
+
+CMD [ "uv", "run", "python", "magic_operator/main.py" ]

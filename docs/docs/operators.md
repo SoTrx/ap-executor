@@ -205,6 +205,12 @@ async def poll(job_id: str):
 
 Finally, register the running instance in Consul under the slugified operator name (step 1) with a passing health check, and the AP Executor will be able to discover, resolve, and invoke it — no code change or configuration on the executor side is needed to add a new operator.
 
+## `magic_operator/` — a fuller reference/test operator
+
+`magic_operator/` is a more complete reference operator than the minimal examples above: it validates its declared inputs, renders a customizable prompt template against them, calls an LLM through a pluggable provider (a deterministic `mock` provider by default — no network, no secrets, no cost — or a real `litellm`-backed provider as an opt-in extra), and returns the response as its single output. Its execution mode (`sync_http` or `async_http`) is chosen via `MAGIC_OPERATOR_EXECUTION_MODE` — see `docs/docs/configuration.md` for the full env var reference. It's always paired with the reference sidecar (`sidecar/`) exactly like a real operator would be.
+
+It's used by the CI end-to-end test suite (`tests/e2e/`, `docker-compose.e2e.yml`) to exercise the executor's full HTTP contract for real — real Consul, real Dapr workflow, real HTTP, multiple operators wired together in one AP graph (`fixtures/composed/magic_e2e.json`) — proving the executor, the sidecar, and multi-operator dataflow wiring all work together, not just against in-process fakes. See `docs/docs/development.md` for how to run it locally.
+
 ## Checklist
 
 - [ ] Service registers in Consul as `<slug of the AP node's "name" property>`, with a passing health check (and `Service.Meta.version` if the AP pins a version).
