@@ -130,6 +130,19 @@ A downstream operator's input can come from either:
 - **A caller-supplied parameter** — placed directly in `state.parameters[operator_id]` on the `ApInstance` at execution time; no edge needed.
 - **Another operator's output** — an `output` edge from the producing operator to an intermediate `ResultType` node, and an `input` edge from that `ResultType` node to the consuming operator, each carrying a `properties.mapping` of `{target_expr: source_expr}` (e.g. `{"to['inputs']['sql']": "from['outputs']['query']"}`) — see `fixtures/composed/06_07.json` for a full worked example. Values wired in this way override a same-named caller parameter.
 
+## 4. Pairing an operator with the reference sidecar
+
+Writing your own Consul registration/manifest-serving code is optional — this repo ships a generic, reusable sidecar (`sidecar/`) that any operator backend can run alongside to get step 1 and step 2 above for free, driven entirely by env vars.
+
+The executor always calls exactly one `address:port` for everything (manifest fetch, execute, poll — the single address Consul hands back for a resolved instance, see `ServiceInstance.base_url`). So rather than being a bare registration helper, the sidecar is a **transparent reverse proxy**:
+
+- Consul registers the **sidecar's** own address:port, not the operator backend's.
+- The sidecar serves `GET /.well-known/operator.json` itself, directly from its own env-var config (see `sidecar/config.py`) — it is never proxied through to the operator, and never fetched from it.
+- **Every other request** — any method, any path, including the operator's real execute/start/poll endpoints — is transparently forwarded to the real operator backend at a configured upstream `host:port`.
+- The sidecar registers once at startup with a Consul HTTP check pointed at its *own* address plus a `/health` path. Since `/health` isn't the manifest path, it falls through the catch-all proxy straight to the operator backend's own `GET /health` — **this is a new endpoint the operator backend must implement** (2xx = healthy) to pair with the sidecar; it's separate from the core manifest contract above. Consul's own agent does the health polling and, via `DeregisterCriticalServiceAfter`, auto-deregisters the instance if that check stays critical — the sidecar itself runs no custom polling loop. On top of that, the sidecar explicitly deregisters on SIGTERM/SIGINT as a graceful-shutdown belt-and-suspenders.
+
+Run it with `uv run python sidecar/main.py` (or the `sidecar` target in the root `Dockerfile`); see `docs/docs/configuration.md` for its full env var reference and `sidecar/examples/dummy_operator.py` for a minimal paired operator backend.
+
 ## Minimal reference implementation
 
 Any HTTP framework works — the only requirements are the manifest endpoint and whatever `execution` declares. A minimal sync operator in FastAPI:
@@ -200,3 +213,4 @@ Finally, register the running instance in Consul under the slugified operator na
 - [ ] Sync: `execution.endpoint` returns the output dict directly on 2xx.
 - [ ] Async: `execution.start_endpoint` returns `{"id": ...}`; `execution.poll_endpoint` contains a literal `{id}` placeholder and returns `{"status": ..., "result": ...}` / `{"status": ..., "error": ...}` using the status vocabulary above.
 - [ ] The AP graph's `Operator` node declares matching `inputs`/`outputs` and is wired in with `consist_of`/`follows`/`input`/`output` edges as needed.
+- [ ] If pairing with the reference sidecar (`sidecar/`), the operator backend serves `GET /health` returning 2xx.

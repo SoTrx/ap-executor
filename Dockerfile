@@ -28,3 +28,10 @@ FROM builder AS prod
 RUN uv sync --frozen
 
 CMD [ "uv", "run", "python", "ap_executor/main.py" ]
+
+# Operator sidecar image: transparent operator reverse-proxy + Consul self-registration
+FROM builder AS sidecar
+
+RUN uv sync --frozen
+
+CMD [ "uv", "run", "python", "sidecar/main.py" ]
