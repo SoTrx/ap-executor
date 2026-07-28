@@ -1,0 +1,13 @@
+# magic_operator's own declaration for "Magic Echo B". Mounted read-only,
+# path given via MAGIC_OPERATOR_CONFIG_PATH. It self-serves its own manifest
+# at GET /.well-known/operator.yaml, built from these same fields -- there
+# is no separate sidecar-facing manifest file to keep in sync.
+name: Magic Echo B
+version: "1.0.0"
+execution_mode: async_http
+output_name: tone
+prompt_template: "Pick a tone of voice for the audience: {audience}"
+inputs:
+  - name: audience
+    type: string
+    required: true

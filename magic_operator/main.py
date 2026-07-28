@@ -1,8 +1,7 @@
 """Entrypoint: `uv run python magic_operator/main.py`.
 
 Single-process `uvicorn.run()`, no `workers=` -- `magic_operator/jobs.py`'s
-JobStore is in-memory and single-process only (same constraint
-`sidecar/main.py` documents for its own Consul registration).
+JobStore is in-memory and single-process only.
 """
 import logging
 

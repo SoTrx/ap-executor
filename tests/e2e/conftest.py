@@ -1,5 +1,5 @@
 """Fixtures for the e2e suite: real HTTP against a real, already-running
-`docker-compose.e2e.yml` stack -- no `ASGITransport`, no mocks."""
+`e2e/docker-compose.yml` stack -- no `ASGITransport`, no mocks."""
 import os
 import sys
 from pathlib import Path
@@ -7,7 +7,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "scripts"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "e2e"))
 from wait_for_e2e_stack import DEFAULT_SERVICE_SLUGS, wait_for_stack  # noqa: E402
 
 

@@ -1,4 +1,4 @@
-"""Fetches and parses an operator's `/.well-known/operator.json` manifest."""
+"""Fetches and parses an operator's `/.well-known/operator.yaml` manifest."""
 from typing import Protocol
 
 from .manifest import OperatorManifest

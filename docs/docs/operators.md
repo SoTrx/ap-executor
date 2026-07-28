@@ -9,7 +9,7 @@ For each `Operator` node in the AP graph, in topological order (`ApInstance.iter
 1. **Resolve inputs** — `instance.resolve_operator_input_values(operator_id)` merges the caller-supplied parameters for this operator with any values wired in from upstream operators via the graph's `input`/`output` edges (see [Wiring into an AP graph](#3-wiring-into-an-ap-graph)).
 2. **Resolve the operator** — `OperatorResolver.resolve(operator_name, operator_version)` (`services/operator_resolver/operator_resolver.py`):
    - looks up a healthy instance in Consul by service name (`ConsulRegistryClient.resolve_operator`, `services/operator_resolver/registry/consul_registry.py`);
-   - fetches that instance's manifest at `GET {base_url}/.well-known/operator.json` (`HttpManifestRetriever`, `services/operator_resolver/manifest/http_manifest_retriever.py`).
+   - fetches that instance's manifest at `GET {base_url}/.well-known/operator.yaml` (`HttpManifestRetriever`, `services/operator_resolver/manifest/http_manifest_retriever.py`).
 3. **Filter inputs to the manifest's declared contract** — `_filter_inputs` (`workflows/operator_execution.py`) drops any resolved input the manifest doesn't declare, fills in declared defaults, and raises `OperatorExecutionError` (`services/executor/errors.py`) if a required input (no default) is still missing. This is the only validation the executor does on inputs before calling the operator.
 4. **Dispatch via the manifest's declared execution mode** — `ExecutionStrategyFactory.create(mode, protocol)` (`services/executor/strategies/factory.py`) picks `HttpSyncExecutionStrategy` or `HttpAsyncPollingExecutionStrategy`, which calls the operator over HTTP.
 5. **Poll until done** (async operators only) — the orchestrator itself owns the polling cadence (`POLL_INTERVAL = 5s`, `workflows/ap_execution.py`), calling the `poll_operator_activity` activity on a Dapr timer until the handle reports `done`. This is intentional: polling from inside the orchestrator (rather than blocking one activity call for the operator's whole duration) means a slow operator never ties up a worker slot, and each poll re-resolves nothing — it just re-checks the same job via the handle it already has.
@@ -38,10 +38,10 @@ If the AP graph pins a `version` on the operator node, resolution filters Consul
 Every operator instance must serve its manifest at:
 
 ```
-GET {base_url}/.well-known/operator.json
+GET {base_url}/.well-known/operator.yaml
 ```
 
-returning JSON matching `OperatorManifest` (`services/operator_resolver/manifest/manifest.py`):
+returning YAML matching `OperatorManifest` (`services/operator_resolver/manifest/manifest.py`):
 
 ```python
 class OperatorIOSpec(BaseModel):
@@ -130,40 +130,36 @@ A downstream operator's input can come from either:
 - **A caller-supplied parameter** — placed directly in `state.parameters[operator_id]` on the `ApInstance` at execution time; no edge needed.
 - **Another operator's output** — an `output` edge from the producing operator to an intermediate `ResultType` node, and an `input` edge from that `ResultType` node to the consuming operator, each carrying a `properties.mapping` of `{target_expr: source_expr}` (e.g. `{"to['inputs']['sql']": "from['outputs']['query']"}`) — see `fixtures/composed/06_07.json` for a full worked example. Values wired in this way override a same-named caller parameter.
 
-## 4. Pairing an operator with the reference sidecar
+## 4. Registering an operator with Consul
 
-Writing your own Consul registration/manifest-serving code is optional — this repo ships a generic, reusable sidecar (`sidecar/`) that any operator backend can run alongside to get step 1 and step 2 above for free.
+There is no sidecar or registration library shipped from this repo — an operator serves its own manifest directly (step 2 above) and registers with Consul using whichever native mechanism fits the deployment environment. This repo's own reference operator (`magic_operator/`) is fully self-sufficient this way: it serves its manifest, a `GET /health` liveness endpoint, and its execute/start/poll endpoints all from the same process, with nothing fronting it.
 
-The executor always calls exactly one `address:port` for everything (manifest fetch, execute, poll — the single address Consul hands back for a resolved instance, see `ServiceInstance.base_url`). So rather than being a bare registration helper, the sidecar is a **transparent reverse proxy**:
+**On Kubernetes (production target)**: an operator is a plain Deployment + Service — no sidecar container, no service-mesh injection needed. Registration is handled by **consul-k8s Service Sync** (`syncCatalog` in the Consul Helm chart), a cluster-level prerequisite enabled once by whoever installs Consul-on-Kubernetes, not per-operator app code. Service Sync mirrors ordinary Kubernetes Services into Consul's catalog automatically (each pod endpoint becomes a Consul service instance), which is the sanctioned mechanism for exactly this "plain Service, no mesh" case — see [HashiCorp's Service Sync docs](https://developer.hashicorp.com/consul/docs/register/service/k8s/service-sync). (Consul's Kubernetes `Registration` CRD is a different, narrower mechanism for genuinely *external*, non-Kubernetes nodes — not applicable to in-cluster operator pods.) The operator's `GET /health` should be wired to its container's readiness probe so Kubernetes' own health signal flows through to Consul.
 
-- Consul registers the **sidecar's** own address:port, not the operator backend's.
-- The sidecar serves `GET /.well-known/operator.json` itself, directly from a mounted YAML file (`OPERATOR_MANIFEST_PATH`, see `sidecar/config.py`) that validates as an `OperatorManifest` — the same manifest content described in step 2 above, just its own artifact rather than decomposed into env vars. It is never proxied through to the operator, and never fetched from it. Deployment/topology settings (Consul address, advertised address, health-check timing) remain plain env vars — see `docs/docs/configuration.md`.
-- **Every other request** — any method, any path, including the operator's real execute/start/poll endpoints — is transparently forwarded to the real operator backend at a configured upstream `host:port`.
-- The sidecar registers once at startup with a Consul HTTP check pointed at its *own* address plus a `/health` path. Since `/health` isn't the manifest path, it falls through the catch-all proxy straight to the operator backend's own `GET /health` — **this is a new endpoint the operator backend must implement** (2xx = healthy) to pair with the sidecar; it's separate from the core manifest contract above. Consul's own agent does the health polling and, via `DeregisterCriticalServiceAfter`, auto-deregisters the instance if that check stays critical — the sidecar itself runs no custom polling loop. On top of that, the sidecar explicitly deregisters on SIGTERM/SIGINT as a graceful-shutdown belt-and-suspenders.
-
-Run it with `uv run python sidecar/main.py` (or the `sidecar` target in the root `Dockerfile`); see `docs/docs/configuration.md` for its full env var reference and `sidecar/examples/dummy_operator.py` for a minimal paired operator backend.
+**On Docker Compose (local/debug/e2e only)**: run a plain Consul client agent (the official `hashicorp/consul` image, `agent -client`, joined to the Consul server via `-retry-join`) alongside each operator, with a mounted service-definition file declaring its name, address:port, and an HTTP health check — the agent registers and health-checks purely from that file, no custom code. See `e2e/consul-services/*.hcl` and `e2e/docker-compose.yml` for a complete working example with three operators.
 
 ## Minimal reference implementation
 
 Any HTTP framework works — the only requirements are the manifest endpoint and whatever `execution` declares. A minimal sync operator in FastAPI:
 
 ```python
-from fastapi import FastAPI
+import yaml
+from fastapi import FastAPI, Response
 
 app = FastAPI()
 
-MANIFEST = {
+MANIFEST_YAML = yaml.safe_dump({
     "manifest_version": "0.1.0",
     "operator": "Text to SQL",
     "version": "1.0.0",
     "execution": {"mode": "sync", "protocol": "http", "endpoint": "/execute"},
     "inputs": [{"name": "nl", "type": "string", "required": True}],
     "outputs": [{"name": "query", "type": "string", "required": True}],
-}
+})
 
-@app.get("/.well-known/operator.json")
+@app.get("/.well-known/operator.yaml")
 async def manifest():
-    return MANIFEST
+    return Response(content=MANIFEST_YAML, media_type="application/yaml")
 
 @app.post("/execute")
 async def execute(payload: dict):
@@ -175,19 +171,21 @@ async def execute(payload: dict):
 ```python
 JOBS: dict[str, dict] = {}
 
-@app.get("/.well-known/operator.json")
+MANIFEST_YAML = yaml.safe_dump({
+    "manifest_version": "0.1.0",
+    "operator": "Long Running Op",
+    "version": "1.0.0",
+    "execution": {
+        "mode": "async", "protocol": "http",
+        "start_endpoint": "/jobs", "poll_endpoint": "/jobs/{id}",
+    },
+    "inputs": [...],
+    "outputs": [...],
+})
+
+@app.get("/.well-known/operator.yaml")
 async def manifest():
-    return {
-        "manifest_version": "0.1.0",
-        "operator": "Long Running Op",
-        "version": "1.0.0",
-        "execution": {
-            "mode": "async", "protocol": "http",
-            "start_endpoint": "/jobs", "poll_endpoint": "/jobs/{id}",
-        },
-        "inputs": [...],
-        "outputs": [...],
-    }
+    return Response(content=MANIFEST_YAML, media_type="application/yaml")
 
 @app.post("/jobs")
 async def start(payload: dict):
@@ -207,16 +205,16 @@ Finally, register the running instance in Consul under the slugified operator na
 
 ## `magic_operator/` — a fuller reference/test operator
 
-`magic_operator/` is a more complete reference operator than the minimal examples above: it validates its declared inputs, renders a customizable prompt template against them, calls an LLM through a pluggable provider (a deterministic `mock` provider by default — no network, no secrets, no cost — or a real `litellm`-backed provider as an opt-in extra), and returns the response as its single output. Its declaration — name, inputs, `execution_mode` (`sync_http` or `async_http`), prompt template — lives in a mounted YAML file (`MAGIC_OPERATOR_CONFIG_PATH`), the same pattern the sidecar uses for its own manifest — see `docs/docs/configuration.md` for the full reference. It's always paired with the reference sidecar (`sidecar/`) exactly like a real operator would be.
+`magic_operator/` is a more complete reference operator than the minimal examples above: it self-serves its own manifest (built from its declaration at startup, always consistent with the routes it actually registers — see step 4 above), validates its declared inputs, renders a customizable prompt template against them, calls an LLM through a pluggable provider (a deterministic `mock` provider by default — no network, no secrets, no cost — or a real `litellm`-backed provider as an opt-in extra), and returns the response as its single output. Its declaration — name, version, inputs, `execution_mode` (`sync_http` or `async_http`), prompt template — lives in a mounted YAML file (`MAGIC_OPERATOR_CONFIG_PATH`) — see `docs/docs/configuration.md` for the full reference. It's fully self-sufficient: no sidecar of any kind fronts it, just a Consul client agent alongside it in the Compose e2e stack (step 4 above).
 
-It's used by the CI end-to-end test suite (`tests/e2e/`, `docker-compose.e2e.yml`) to exercise the executor's full HTTP contract for real — real Consul, real Dapr workflow, real HTTP, multiple operators wired together in one AP graph (`fixtures/composed/magic_e2e.json`) — proving the executor, the sidecar, and multi-operator dataflow wiring all work together, not just against in-process fakes. See `docs/docs/development.md` for how to run it locally.
+It's used by the CI end-to-end test suite (`tests/e2e/`, `e2e/docker-compose.yml`) to exercise the executor's full HTTP contract for real — real Consul, real Dapr workflow, real HTTP, multiple operators wired together in one AP graph (`e2e/magic_e2e.json`) — proving the executor and multi-operator dataflow wiring work together for real, not just against in-process fakes. See `docs/docs/development.md` for how to run it locally.
 
 ## Checklist
 
 - [ ] Service registers in Consul as `<slug of the AP node's "name" property>`, with a passing health check (and `Service.Meta.version` if the AP pins a version).
-- [ ] `GET /.well-known/operator.json` returns a valid `OperatorManifest` (`manifest_version`, `operator`, `version`, `execution`, `inputs`, `outputs`).
+- [ ] `GET /.well-known/operator.yaml` returns a valid `OperatorManifest` (`manifest_version`, `operator`, `version`, `execution`, `inputs`, `outputs`) as YAML.
 - [ ] `execution.mode`/`protocol` is `sync`/`http` or `async`/`http` (the only two currently supported).
 - [ ] Sync: `execution.endpoint` returns the output dict directly on 2xx.
 - [ ] Async: `execution.start_endpoint` returns `{"id": ...}`; `execution.poll_endpoint` contains a literal `{id}` placeholder and returns `{"status": ..., "result": ...}` / `{"status": ..., "error": ...}` using the status vocabulary above.
 - [ ] The AP graph's `Operator` node declares matching `inputs`/`outputs` and is wired in with `consist_of`/`follows`/`input`/`output` edges as needed.
-- [ ] If pairing with the reference sidecar (`sidecar/`), the operator backend serves `GET /health` returning 2xx.
+- [ ] The operator serves `GET /health` returning 2xx, wired to whatever health check Consul (or Kubernetes' readiness probe, feeding Service Sync) is configured to use.

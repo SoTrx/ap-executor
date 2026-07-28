@@ -1,0 +1,16 @@
+# magic_operator's own declaration for "Magic Combine". Mounted read-only,
+# path given via MAGIC_OPERATOR_CONFIG_PATH. It self-serves its own manifest
+# at GET /.well-known/operator.yaml, built from these same fields -- there
+# is no separate sidecar-facing manifest file to keep in sync.
+name: Magic Combine
+version: "1.0.0"
+execution_mode: sync_http
+output_name: message
+prompt_template: "Write a message summarizing '{summary}' in a '{tone}' tone."
+inputs:
+  - name: summary
+    type: string
+    required: true
+  - name: tone
+    type: string
+    required: true

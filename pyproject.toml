@@ -48,7 +48,7 @@ build-backend = "hatchling.build"
 py-modules = ["ap_executor"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["ap_executor", "sidecar", "magic_operator"]
+packages = ["ap_executor", "magic_operator"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

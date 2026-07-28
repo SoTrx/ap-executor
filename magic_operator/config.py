@@ -1,13 +1,12 @@
 """Magic operator configuration: the operator's own declaration (name,
-inputs, execution mode, prompt template) lives in a single mounted YAML
-file (``MAGIC_OPERATOR_CONFIG_PATH``) -- portable as-is to a Kubernetes
+version, inputs, execution mode, prompt template) lives in a single mounted
+YAML file (``MAGIC_OPERATOR_CONFIG_PATH``) -- portable as-is to a Kubernetes
 ``ConfigMap`` volume mount. Deployment/runtime settings (LLM provider
-credentials, bind host/port) stay plain env vars, mirroring
-``sidecar/config.py``'s split between "what this operator is" (file) and
-"where/how it runs" (env vars). Also defines the fixed HTTP paths this
-operator serves in each execution mode -- these MUST match whatever the
-paired sidecar's manifest file declares for the same operator instance (see
-``docker-compose.e2e.yml``).
+credentials, bind host/port) stay plain env vars. Also defines the fixed
+HTTP paths this operator serves in each execution mode -- these back both
+the routes it registers AND the manifest it self-serves at
+``GET /.well-known/operator.yaml`` (see `app.py`), so the two can never
+drift apart.
 """
 import os
 from dataclasses import dataclass
@@ -27,7 +26,7 @@ _VALID_EXECUTION_MODES = {"sync_http", "async_http"}
 
 
 class InputSpec(BaseModel):
-    """Same shape as sidecar's `OperatorIOSpec` (services/operator_resolver/manifest/manifest.py)."""
+    """Same shape as `OperatorIOSpec` (ap_executor/services/operator_resolver/manifest/manifest.py)."""
     name: str
     type: str
     required: bool = True
@@ -37,6 +36,8 @@ class InputSpec(BaseModel):
 class OperatorDeclaration(BaseModel):
     """The shape of the file `MAGIC_OPERATOR_CONFIG_PATH` points at."""
     name: str = "Magic Operator"
+    version: str
+    manifest_version: str = "0.1.0"
     execution_mode: Literal["sync_http", "async_http"] = "sync_http"
     output_name: str = "response"
     prompt_template: str
@@ -46,6 +47,8 @@ class OperatorDeclaration(BaseModel):
 @dataclass(frozen=True)
 class MagicOperatorConfig:
     operator_name: str
+    version: str
+    manifest_version: str
     inputs: List[InputSpec]
     output_name: str
     prompt_template: str
@@ -107,6 +110,8 @@ def load_config(env: Optional[Mapping[str, str]] = None) -> MagicOperatorConfig:
 
     return MagicOperatorConfig(
         operator_name=declaration.name,
+        version=declaration.version,
+        manifest_version=declaration.manifest_version,
         inputs=declaration.inputs,
         output_name=declaration.output_name,
         prompt_template=declaration.prompt_template,

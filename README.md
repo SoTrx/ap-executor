@@ -7,7 +7,7 @@ A FastAPI service that **orchestrates execution of the operators** defined in an
 Given an AP in PG-JSON format, the service:
 1. Parses the operator graph
 2. Resolves the execution order (topological sort via `follows` edges)
-3. For each operator, resolves a healthy implementation via Consul, fetches its manifest, and invokes it over HTTP
+3. For each operator, resolves a healthy implementation via Consul, fetches its manifest, and invokes it
 4. Returns per-operator results
 
 ---
@@ -29,7 +29,7 @@ graph TD
     Activity -->|HTTP call| Operator
 ```
 
-Each AP execution is a Dapr workflow instance: the orchestrator (`ap_execution_workflow`) walks the operator graph in topological order and, for every operator, calls a Dapr activity. That activity is the only place I/O happens — it resolves the operator via Consul, fetches its `/.well-known/operator.json` manifest, and dispatches the call using the manifest-declared strategy (`sync` single call, or `async` start+poll). See [Architecture](docs/docs/architecture.md) for the full sequence diagrams, and [Registering an Operator](docs/docs/operators.md) for the manifest contract and how to register a new operator implementation.
+Each AP execution is a Dapr workflow instance: the orchestrator (`ap_execution_workflow`) walks the operator graph in topological order and, for every operator, calls a Dapr activity. That activity is the only place I/O happens — it resolves the operator via Consul, fetches its `/.well-known/operator.yaml` manifest, and dispatches the call using the manifest-declared strategy (`sync` single call, or `async` start+poll). See [Architecture](docs/docs/architecture.md) for the full sequence diagrams, and [Registering an Operator](docs/docs/operators.md) for the manifest contract and how to register a new operator implementation.
 
 ---
 

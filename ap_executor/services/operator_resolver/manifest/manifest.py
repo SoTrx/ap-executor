@@ -31,7 +31,7 @@ OperatorExecutionSpec = Annotated[
 
 
 class OperatorManifest(BaseModel):
-    """The `/.well-known/operator.json` contract exposed by an operator's sidecar."""
+    """The `/.well-known/operator.yaml` contract every operator must serve."""
     manifest_version: str
     operator: str
     version: str

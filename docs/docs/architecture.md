@@ -20,7 +20,7 @@ Dapr activities (workflows/operator_execution.py :: execute_operator_activity / 
       ├─ OperatorResolver.resolve() (services/operator_resolver/operator_resolver.py)
       │    ├─ Consul lookup (services/operator_resolver/registry/consul_registry.py)
       │    └─ manifest fetch (services/operator_resolver/manifest/http_manifest_retriever.py
-      │                        → GET /.well-known/operator.json)
+      │                        → GET /.well-known/operator.yaml)
       └─ dispatch via OperatorExecutionStrategy (services/executor/strategies/{http_sync,http_async_polling}.py,
                                                    selected by strategies/factory.py::ExecutionStrategyFactory.create)
       ▼
@@ -83,7 +83,7 @@ sequenceDiagram
 
 ## Operator Contract
 
-Every operator implementation exposes a manifest at `/.well-known/operator.json` (`services/operator_resolver/manifest/manifest.py::OperatorManifest`) declaring its name, version, typed inputs/outputs, and its execution mode:
+Every operator implementation exposes a manifest at `/.well-known/operator.yaml` (`services/operator_resolver/manifest/manifest.py::OperatorManifest`) declaring its name, version, typed inputs/outputs, and its execution mode:
 
 - **`sync`** (`OperatorExecutionSyncSpec`) — a single `endpoint` that runs the operator and returns its result immediately. Handled by `HttpSyncExecutionStrategy`.
 - **`async`** (`OperatorExecutionAsyncSpec`) — a `start_endpoint` that kicks off a job and a `poll_endpoint` (templated with the job id) to check on it. Handled by `HttpAsyncPollingExecutionStrategy`, which the orchestrator polls on a timer (`workflows/ap_execution.py`'s `POLL_INTERVAL`) rather than blocking a single activity call for the operator's whole duration.

@@ -1,0 +1,13 @@
+# magic_operator's own declaration for "Magic Echo A". Mounted read-only,
+# path given via MAGIC_OPERATOR_CONFIG_PATH. It self-serves its own manifest
+# at GET /.well-known/operator.yaml, built from these same fields -- there
+# is no separate sidecar-facing manifest file to keep in sync.
+name: Magic Echo A
+version: "1.0.0"
+execution_mode: sync_http
+output_name: summary
+prompt_template: "Summarize the topic: {topic}"
+inputs:
+  - name: topic
+    type: string
+    required: true

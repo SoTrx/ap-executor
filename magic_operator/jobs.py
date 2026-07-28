@@ -1,6 +1,6 @@
-"""In-memory job store for `async_http` mode, single-process only (mirrors
-the constraint `sidecar/main.py` documents for Consul registration -- this
-operator must also run as a single `uvicorn.run()` process, no `workers=`).
+"""In-memory job store for `async_http` mode, single-process only -- this
+operator must run as a single `uvicorn.run()` process, no `workers=`, or
+each worker would keep its own independent, inconsistent job store.
 
 The LLM call happens synchronously when the job is created; only the
 *reported* completion is deferred by a poll-cycle counter. This avoids

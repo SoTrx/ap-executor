@@ -9,13 +9,16 @@ from types import SimpleNamespace
 from typing import Any, Callable, Dict
 
 import pytest
-from fastapi import FastAPI, Request
+import yaml
+from fastapi import FastAPI, Request, Response
 
 
 def _serve_manifest(app: FastAPI, manifest: Dict[str, Any]) -> None:
-    @app.get("/.well-known/operator.json")
-    async def _manifest() -> Dict[str, Any]:  # noqa: WPS430 (nested is fine for a dummy)
-        return manifest
+    manifest_yaml = yaml.safe_dump(manifest)
+
+    @app.get("/.well-known/operator.yaml")
+    async def _manifest() -> Response:  # noqa: WPS430 (nested is fine for a dummy)
+        return Response(content=manifest_yaml, media_type="application/yaml")
 
 
 def _make_sync_operator_app(

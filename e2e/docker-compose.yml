@@ -1,17 +1,21 @@
 # End-to-end CI stack: the real ap_executor service, a real Consul instance,
-# real Dapr Workflow infrastructure, and three magic_operator+sidecar pairs
-# wired together into the AP graph in fixtures/composed/magic_e2e.json.
+# real Dapr Workflow infrastructure, and three magic_operator instances --
+# each paired with a plain Consul client agent (official hashicorp/consul
+# image, no custom registration code) that registers it and runs its health
+# check purely from a mounted service-definition file under consul-services/
+# -- wired together into the AP graph in e2e/magic_e2e.json.
 #
-# Usage:
-#   docker compose -f docker-compose.e2e.yml up -d --build
-#   uv run python scripts/wait_for_e2e_stack.py
+# Usage (run from the repo root):
+#   docker compose -f e2e/docker-compose.yml up -d --build
+#   uv run python e2e/wait_for_e2e_stack.py
 #   uv run pytest tests/e2e -m e2e
-#   docker compose -f docker-compose.e2e.yml down -v
+#   docker compose -f e2e/docker-compose.yml down -v
 #
 # Deliberately a separate file/service-name namespace from
 # .devcontainer/docker-compose.yml (which is dev-only and couples its Dapr
 # sidecar to the devcontainer's own network namespace) so both stacks can run
 # on the same Docker daemon without colliding.
+name: ap-executor-e2e
 services:
   e2e-redis:
     image: redis:8-alpine
@@ -23,7 +27,10 @@ services:
 
   e2e-consul:
     image: hashicorp/consul:2.0
-    command: agent -dev -client=0.0.0.0 -ui
+    # -bind=0.0.0.0 so the Serf/gossip layer is reachable from sibling
+    # containers (dev mode otherwise binds it to 127.0.0.1, which the
+    # e2e-consul-agent-* client agents can't join).
+    command: agent -dev -client=0.0.0.0 -bind=0.0.0.0 -ui
     ports:
       - "8500:8500"
     healthcheck:
@@ -43,7 +50,7 @@ services:
   # --- The executor itself ------------------------------------------------
   e2e-executor:
     build:
-      context: .
+      context: ..
       dockerfile: Dockerfile
       target: prod
     ports:
@@ -73,7 +80,7 @@ services:
       - "-scheduler-host-address=e2e-dapr-scheduler:50006"
       - "-resources-path=/components"
     volumes:
-      - ./.dapr/components-e2e:/components
+      - ./dapr-components:/components
     # Standard Dapr self-hosted colocation: shares e2e-executor's network
     # namespace so the app is reachable at localhost:5000 from daprd's POV.
     network_mode: "service:e2e-executor"
@@ -88,31 +95,21 @@ services:
   # --- Operator A: sync_http producer (topic -> summary) ------------------
   e2e-magic-a:
     build:
-      context: .
+      context: ..
       dockerfile: Dockerfile
       target: magic-operator
     volumes:
-      - ./manifests/magic-echo-a/magic-operator.yaml:/config/magic-operator.yaml:ro
+      - ./manifests/magic-echo-a.yaml:/config/magic-operator.yaml:ro
     environment:
       - MAGIC_OPERATOR_CONFIG_PATH=/config/magic-operator.yaml
       - MAGIC_OPERATOR_LLM_PROVIDER=mock
-      - MAGIC_OPERATOR_PORT=9000
+      - MAGIC_OPERATOR_PORT=8000
 
-  e2e-sidecar-a:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: sidecar
+  e2e-consul-agent-a:
+    image: hashicorp/consul:2.0
+    command: [ "agent", "-node=magic-echo-a-agent", "-retry-join=e2e-consul", "-client=0.0.0.0", "-config-dir=/consul/config", "-data-dir=/consul/data" ]
     volumes:
-      - ./manifests/magic-echo-a/manifest.yaml:/config/manifest.yaml:ro
-    environment:
-      - CONSUL_HTTP_ADDR=http://e2e-consul:8500
-      - SIDECAR_SERVICE_NAME=Magic Echo A
-      - SIDECAR_ADVERTISE_ADDRESS=e2e-sidecar-a
-      - SIDECAR_PORT=8000
-      - UPSTREAM_HOST=e2e-magic-a
-      - UPSTREAM_PORT=9000
-      - OPERATOR_MANIFEST_PATH=/config/manifest.yaml
+      - ./consul-services/magic-echo-a.hcl:/consul/config/service.hcl:ro
     depends_on:
       e2e-consul:
         condition: service_healthy
@@ -122,32 +119,22 @@ services:
   # --- Operator B: async_http producer (audience -> tone) ------------------
   e2e-magic-b:
     build:
-      context: .
+      context: ..
       dockerfile: Dockerfile
       target: magic-operator
     volumes:
-      - ./manifests/magic-echo-b/magic-operator.yaml:/config/magic-operator.yaml:ro
+      - ./manifests/magic-echo-b.yaml:/config/magic-operator.yaml:ro
     environment:
       - MAGIC_OPERATOR_CONFIG_PATH=/config/magic-operator.yaml
       - MAGIC_OPERATOR_ASYNC_POLL_CYCLES=1
       - MAGIC_OPERATOR_LLM_PROVIDER=mock
-      - MAGIC_OPERATOR_PORT=9000
+      - MAGIC_OPERATOR_PORT=8000
 
-  e2e-sidecar-b:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: sidecar
+  e2e-consul-agent-b:
+    image: hashicorp/consul:2.0
+    command: [ "agent", "-node=magic-echo-b-agent", "-retry-join=e2e-consul", "-client=0.0.0.0", "-config-dir=/consul/config", "-data-dir=/consul/data" ]
     volumes:
-      - ./manifests/magic-echo-b/manifest.yaml:/config/manifest.yaml:ro
-    environment:
-      - CONSUL_HTTP_ADDR=http://e2e-consul:8500
-      - SIDECAR_SERVICE_NAME=Magic Echo B
-      - SIDECAR_ADVERTISE_ADDRESS=e2e-sidecar-b
-      - SIDECAR_PORT=8000
-      - UPSTREAM_HOST=e2e-magic-b
-      - UPSTREAM_PORT=9000
-      - OPERATOR_MANIFEST_PATH=/config/manifest.yaml
+      - ./consul-services/magic-echo-b.hcl:/consul/config/service.hcl:ro
     depends_on:
       e2e-consul:
         condition: service_healthy
@@ -157,31 +144,21 @@ services:
   # --- Operator C: sync_http consumer (summary + tone -> message) ----------
   e2e-magic-c:
     build:
-      context: .
+      context: ..
       dockerfile: Dockerfile
       target: magic-operator
     volumes:
-      - ./manifests/magic-combine/magic-operator.yaml:/config/magic-operator.yaml:ro
+      - ./manifests/magic-combine.yaml:/config/magic-operator.yaml:ro
     environment:
       - MAGIC_OPERATOR_CONFIG_PATH=/config/magic-operator.yaml
       - MAGIC_OPERATOR_LLM_PROVIDER=mock
-      - MAGIC_OPERATOR_PORT=9000
+      - MAGIC_OPERATOR_PORT=8000
 
-  e2e-sidecar-c:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: sidecar
+  e2e-consul-agent-c:
+    image: hashicorp/consul:2.0
+    command: [ "agent", "-node=magic-combine-agent", "-retry-join=e2e-consul", "-client=0.0.0.0", "-config-dir=/consul/config", "-data-dir=/consul/data" ]
     volumes:
-      - ./manifests/magic-combine/manifest.yaml:/config/manifest.yaml:ro
-    environment:
-      - CONSUL_HTTP_ADDR=http://e2e-consul:8500
-      - SIDECAR_SERVICE_NAME=Magic Combine
-      - SIDECAR_ADVERTISE_ADDRESS=e2e-sidecar-c
-      - SIDECAR_PORT=8000
-      - UPSTREAM_HOST=e2e-magic-c
-      - UPSTREAM_PORT=9000
-      - OPERATOR_MANIFEST_PATH=/config/manifest.yaml
+      - ./consul-services/magic-combine.hcl:/consul/config/service.hcl:ro
     depends_on:
       e2e-consul:
         condition: service_healthy

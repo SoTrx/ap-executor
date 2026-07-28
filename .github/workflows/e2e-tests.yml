@@ -23,18 +23,18 @@ jobs:
         run: uv sync --all-groups
 
       - name: Build and start the e2e stack
-        run: docker compose -f docker-compose.e2e.yml up -d --build
+        run: docker compose -f e2e/docker-compose.yml up -d --build
 
       - name: Wait for executor readiness + operator registration
-        run: uv run python scripts/wait_for_e2e_stack.py
+        run: uv run python e2e/wait_for_e2e_stack.py
 
       - name: Run e2e tests
         run: uv run pytest tests/e2e -m e2e
 
       - name: Collect compose logs on failure
         if: failure()
-        run: docker compose -f docker-compose.e2e.yml logs --no-color
+        run: docker compose -f e2e/docker-compose.yml logs --no-color
 
       - name: Tear down
         if: always()
-        run: docker compose -f docker-compose.e2e.yml down -v
+        run: docker compose -f e2e/docker-compose.yml down -v

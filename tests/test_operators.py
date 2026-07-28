@@ -1,6 +1,7 @@
 """Unit tests for operator discovery (Consul), contract (manifest), and execution strategies."""
 import httpx
 import pytest
+import yaml
 
 from ap_executor.services.executor.errors import OperatorExecutionError
 from ap_executor.services.operator_resolver.errors import UnsupportedOperatorError
@@ -106,8 +107,8 @@ ASYNC_MANIFEST_JSON = {
 @pytest.mark.asyncio
 async def test_fetch_manifest_parses_sync_spec():
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/.well-known/operator.json"
-        return httpx.Response(200, json=SYNC_MANIFEST_JSON)
+        assert request.url.path == "/.well-known/operator.yaml"
+        return httpx.Response(200, text=yaml.safe_dump(SYNC_MANIFEST_JSON), headers={"content-type": "application/yaml"})
 
     instance = ServiceInstance(service_id="x", service_name="text-to-sql",
                                address="10.0.0.4", port=8080)
@@ -121,7 +122,7 @@ async def test_fetch_manifest_parses_sync_spec():
 @pytest.mark.asyncio
 async def test_fetch_manifest_parses_async_spec():
     def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json=ASYNC_MANIFEST_JSON)
+        return httpx.Response(200, text=yaml.safe_dump(ASYNC_MANIFEST_JSON), headers={"content-type": "application/yaml"})
 
     instance = ServiceInstance(service_id="x", service_name="long-running-op",
                                address="10.0.0.4", port=8080)

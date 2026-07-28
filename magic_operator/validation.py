@@ -1,6 +1,5 @@
 """Input validation against the operator's own declared `InputSpec`s -- the
-last line of defense if the sidecar/executor ever forwarded something
-malformed."""
+last line of defense if the executor ever forwarded something malformed."""
 from typing import Any, Dict, List
 
 from .config import InputSpec

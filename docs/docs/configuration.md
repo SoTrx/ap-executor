@@ -17,40 +17,15 @@ All variables have working defaults matching the underlying SDKs' own defaults, 
 
 Copy `.env.example` to `.env` and adjust as needed for your environment (e.g. pointing `CONSUL_HTTP_ADDR` at a real Consul cluster in production).
 
-## Operator Sidecar
-
-`sidecar/` (see [Registering an Operator](operators.md#4-pairing-an-operator-with-the-reference-sidecar)) is a separate process paired **1:1 with one operator instance** — not with the executor. Run it with `uv run python sidecar/main.py`.
-
-The operator's own manifest content (`manifest_version`, `operator`, `version`, `execution`, `inputs`, `outputs`) is **not** decomposed into env vars — it's read from a single mounted YAML file that validates directly as an `OperatorManifest`, given via `OPERATOR_MANIFEST_PATH`. This keeps the manifest one portable artifact (a plain YAML file — a Docker Compose bind mount today, a Kubernetes `ConfigMap` volume mount tomorrow, no code change either way) instead of several JSON-blob env vars, and sidesteps shell/YAML quoting hazards entirely. See `manifests/magic-echo-a/manifest.yaml` for an example. Everything else — deployment topology, Consul registration, health-check timing — stays a plain env var, since it varies per deployment and isn't part of "what this operator is":
-
-| Variable | Default | Description |
-|---|---|---|
-| `CONSUL_HTTP_ADDR` | `http://localhost:8500` | Consul agent the sidecar registers/deregisters against |
-| `SIDECAR_SERVICE_NAME` | *(required)* | Raw operator name; slugified into the Consul service name — must match the AP node's slugified `properties.name` |
-| `SIDECAR_SERVICE_ID` | `{slug}-{advertise_address}-{advertise_port}` | Consul service instance ID |
-| `SIDECAR_HOST` | `0.0.0.0` | Bind host for the sidecar's own HTTP server |
-| `SIDECAR_PORT` | `8000` | Bind port for the sidecar's own HTTP server |
-| `SIDECAR_ADVERTISE_ADDRESS` | *(required)* | Address Consul hands the executor to reach this sidecar |
-| `SIDECAR_ADVERTISE_PORT` | = `SIDECAR_PORT` | Port Consul hands out (differs from bind port under container port remapping) |
-| `SIDECAR_HEALTH_CHECK_PATH` | `/health` | Path Consul's HTTP check hits on the sidecar's own address; falls through the catch-all proxy to the upstream's `/health` |
-| `SIDECAR_HEALTH_CHECK_INTERVAL` | `10s` | Consul `Check.Interval` |
-| `SIDECAR_HEALTH_CHECK_TIMEOUT` | `5s` | Consul `Check.Timeout` |
-| `SIDECAR_DEREGISTER_AFTER` | `1m` | Consul `Check.DeregisterCriticalServiceAfter` |
-| `SIDECAR_PROXY_TIMEOUT_SECONDS` | `30` | httpx client timeout for proxied calls to the upstream |
-| `SIDECAR_CONSUL_TIMEOUT_SECONDS` | `10` | httpx client timeout for the register/deregister calls |
-| `UPSTREAM_HOST` | `localhost` | Real operator backend host |
-| `UPSTREAM_PORT` | *(required)* | Real operator backend port |
-| `OPERATOR_MANIFEST_PATH` | *(required)* | Path to a mounted YAML file that validates as `OperatorManifest` |
-
 ## Magic Operator (reference/test)
 
-`magic_operator/` (see [`magic_operator/` — a fuller reference/test operator](operators.md#magic_operator--a-fuller-referencetest-operator)) is a separate process, paired 1:1 with a `sidecar/` instance just like a real operator. Run it with `uv run python magic_operator/main.py`.
+`magic_operator/` (see [Registering an Operator](operators.md#4-registering-an-operator-with-consul)) is a self-sufficient reference operator — no sidecar of any kind fronts it. It serves its own manifest, health check, and execute/start/poll endpoints all from one process. Run it with `uv run python magic_operator/main.py`.
 
-Like the sidecar, the operator's own declaration (name, inputs, execution mode, prompt template) is read from a single mounted YAML file given via `MAGIC_OPERATOR_CONFIG_PATH` — see `manifests/magic-echo-a/magic-operator.yaml` for an example. Its `execution_mode` must stay consistent with the paired sidecar manifest's `execution` field for the same operator instance (`sync_http` ↔ a manifest with `endpoint`; `async_http` ↔ one with `start_endpoint`/`poll_endpoint`) — see the comments in each `manifests/<operator>/` directory. LLM provider credentials and runtime settings stay plain env vars (never put `MAGIC_OPERATOR_LLM_API_KEY` in the mounted file — it's a secret, not manifest content):
+Its declaration (name, version, inputs, execution mode, prompt template — everything needed to both self-serve its manifest and behave correctly) is read from a single mounted YAML file given via `MAGIC_OPERATOR_CONFIG_PATH` — see `e2e/manifests/magic-echo-a.yaml` for an example. This keeps the operator's own contract one portable artifact (a Docker Compose bind mount today, a Kubernetes `ConfigMap` volume mount tomorrow) instead of several JSON-blob env vars. Because the manifest it serves is built from the same `execution_mode`/route constants it registers its routes with, there's no separate file to keep in sync. LLM provider credentials and runtime settings stay plain env vars (never put `MAGIC_OPERATOR_LLM_API_KEY` in the mounted file — it's a secret, not manifest content):
 
 | Variable | Default | Description |
 |---|---|---|
-| `MAGIC_OPERATOR_CONFIG_PATH` | *(required)* | Path to a mounted YAML file with `name`, `execution_mode`, `output_name`, `prompt_template`, `inputs` |
+| `MAGIC_OPERATOR_CONFIG_PATH` | *(required)* | Path to a mounted YAML file with `name`, `version`, `manifest_version`, `execution_mode`, `output_name`, `prompt_template`, `inputs` |
 | `MAGIC_OPERATOR_LLM_PROVIDER` | `mock` | `mock` (deterministic, no network — the CI default) or `litellm` (real LLM call, requires the `llm` extra) |
 | `MAGIC_OPERATOR_LLM_MODEL` | — | required when `MAGIC_OPERATOR_LLM_PROVIDER=litellm` |
 | `MAGIC_OPERATOR_LLM_API_BASE` | *(unset)* | passed to `litellm.acompletion` |
@@ -58,7 +33,7 @@ Like the sidecar, the operator's own declaration (name, inputs, execution mode, 
 | `MAGIC_OPERATOR_LLM_TIMEOUT_SECONDS` | `30` | |
 | `MAGIC_OPERATOR_ASYNC_POLL_CYCLES` | `1` | number of `GET /jobs/{id}` calls that report `"running"` before `"done"` (no real delay — a counter, kept fast for CI) |
 | `MAGIC_OPERATOR_HOST` | `0.0.0.0` | bind host |
-| `MAGIC_OPERATOR_PORT` | `9000` | bind port — this is what a paired sidecar's `UPSTREAM_PORT` points at |
+| `MAGIC_OPERATOR_PORT` | `9000` | bind port — the same address Consul registers (a Consul client agent alongside it in Compose, or Kubernetes Service Sync in production; see `operators.md`) |
 
 ## Testing Configuration
 

@@ -1,10 +1,10 @@
-"""Submits the 3-operator magic_operator AP graph
-(fixtures/composed/magic_e2e.json) to a real, running ap_executor over real
-HTTP, and asserts the full chain worked: Consul resolution, the sidecar's
-manifest-serving + transparent proxy, both HTTP execution strategies
-(Magic Echo A is sync_http, Magic Echo B is async_http), and cross-operator
-dataflow wiring (Magic Combine's inputs come from A's and B's actual
-outputs, not the raw caller parameters).
+"""Submits the 3-operator magic_operator AP graph (e2e/magic_e2e.json) to a
+real, running ap_executor over real HTTP, and asserts the full chain
+worked: Consul resolution (via the Consul client agents in
+e2e/docker-compose.yml), self-served operator manifests, both HTTP
+execution strategies (Magic Echo A is sync_http, Magic Echo B is
+async_http), and cross-operator dataflow wiring (Magic Combine's inputs
+come from A's and B's actual outputs, not the raw caller parameters).
 """
 import json
 from pathlib import Path
@@ -14,7 +14,7 @@ import pytest
 from magic_operator.llm.mock import MOCK_PREFIX
 from magic_operator.prompt import render_prompt
 
-FIXTURE_PATH = Path(__file__).parent.parent.parent / "fixtures" / "composed" / "magic_e2e.json"
+FIXTURE_PATH = Path(__file__).parent.parent.parent / "e2e" / "magic_e2e.json"
 
 A_ID = "d0000000-0000-0000-0000-000000000002"
 B_ID = "d0000000-0000-0000-0000-000000000003"
