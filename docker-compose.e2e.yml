@@ -91,13 +91,11 @@ services:
       context: .
       dockerfile: Dockerfile
       target: magic-operator
+    volumes:
+      - ./manifests/magic-echo-a/magic-operator.yaml:/config/magic-operator.yaml:ro
     environment:
-      - MAGIC_OPERATOR_NAME=Magic Echo A
-      - MAGIC_OPERATOR_EXECUTION_MODE=sync_http
+      - MAGIC_OPERATOR_CONFIG_PATH=/config/magic-operator.yaml
       - MAGIC_OPERATOR_LLM_PROVIDER=mock
-      - MAGIC_OPERATOR_INPUTS=[{"name":"topic","type":"string","required":true}]
-      - MAGIC_OPERATOR_OUTPUT_NAME=summary
-      - "MAGIC_OPERATOR_PROMPT_TEMPLATE=Summarize the topic: {topic}"
       - MAGIC_OPERATOR_PORT=9000
 
   e2e-sidecar-a:
@@ -105,6 +103,8 @@ services:
       context: .
       dockerfile: Dockerfile
       target: sidecar
+    volumes:
+      - ./manifests/magic-echo-a/manifest.yaml:/config/manifest.yaml:ro
     environment:
       - CONSUL_HTTP_ADDR=http://e2e-consul:8500
       - SIDECAR_SERVICE_NAME=Magic Echo A
@@ -112,12 +112,7 @@ services:
       - SIDECAR_PORT=8000
       - UPSTREAM_HOST=e2e-magic-a
       - UPSTREAM_PORT=9000
-      - OPERATOR_NAME=Magic Echo A
-      - OPERATOR_VERSION=1.0.0
-      # Must match e2e-magic-a's MAGIC_OPERATOR_EXECUTION_MODE=sync_http, which serves POST /execute.
-      - OPERATOR_EXECUTION={"mode":"sync","protocol":"http","endpoint":"/execute"}
-      - OPERATOR_INPUTS=[{"name":"topic","type":"string","required":true}]
-      - OPERATOR_OUTPUTS=[{"name":"summary","type":"string","required":true}]
+      - OPERATOR_MANIFEST_PATH=/config/manifest.yaml
     depends_on:
       e2e-consul:
         condition: service_healthy
@@ -130,14 +125,12 @@ services:
       context: .
       dockerfile: Dockerfile
       target: magic-operator
+    volumes:
+      - ./manifests/magic-echo-b/magic-operator.yaml:/config/magic-operator.yaml:ro
     environment:
-      - MAGIC_OPERATOR_NAME=Magic Echo B
-      - MAGIC_OPERATOR_EXECUTION_MODE=async_http
+      - MAGIC_OPERATOR_CONFIG_PATH=/config/magic-operator.yaml
       - MAGIC_OPERATOR_ASYNC_POLL_CYCLES=1
       - MAGIC_OPERATOR_LLM_PROVIDER=mock
-      - MAGIC_OPERATOR_INPUTS=[{"name":"audience","type":"string","required":true}]
-      - MAGIC_OPERATOR_OUTPUT_NAME=tone
-      - "MAGIC_OPERATOR_PROMPT_TEMPLATE=Pick a tone of voice for the audience: {audience}"
       - MAGIC_OPERATOR_PORT=9000
 
   e2e-sidecar-b:
@@ -145,6 +138,8 @@ services:
       context: .
       dockerfile: Dockerfile
       target: sidecar
+    volumes:
+      - ./manifests/magic-echo-b/manifest.yaml:/config/manifest.yaml:ro
     environment:
       - CONSUL_HTTP_ADDR=http://e2e-consul:8500
       - SIDECAR_SERVICE_NAME=Magic Echo B
@@ -152,12 +147,7 @@ services:
       - SIDECAR_PORT=8000
       - UPSTREAM_HOST=e2e-magic-b
       - UPSTREAM_PORT=9000
-      - OPERATOR_NAME=Magic Echo B
-      - OPERATOR_VERSION=1.0.0
-      # Must match e2e-magic-b's MAGIC_OPERATOR_EXECUTION_MODE=async_http, which serves POST /jobs + GET /jobs/{job_id}.
-      - OPERATOR_EXECUTION={"mode":"async","protocol":"http","start_endpoint":"/jobs","poll_endpoint":"/jobs/{id}"}
-      - OPERATOR_INPUTS=[{"name":"audience","type":"string","required":true}]
-      - OPERATOR_OUTPUTS=[{"name":"tone","type":"string","required":true}]
+      - OPERATOR_MANIFEST_PATH=/config/manifest.yaml
     depends_on:
       e2e-consul:
         condition: service_healthy
@@ -170,13 +160,11 @@ services:
       context: .
       dockerfile: Dockerfile
       target: magic-operator
+    volumes:
+      - ./manifests/magic-combine/magic-operator.yaml:/config/magic-operator.yaml:ro
     environment:
-      - MAGIC_OPERATOR_NAME=Magic Combine
-      - MAGIC_OPERATOR_EXECUTION_MODE=sync_http
+      - MAGIC_OPERATOR_CONFIG_PATH=/config/magic-operator.yaml
       - MAGIC_OPERATOR_LLM_PROVIDER=mock
-      - MAGIC_OPERATOR_INPUTS=[{"name":"summary","type":"string","required":true},{"name":"tone","type":"string","required":true}]
-      - MAGIC_OPERATOR_OUTPUT_NAME=message
-      - "MAGIC_OPERATOR_PROMPT_TEMPLATE=Write a message summarizing '{summary}' in a '{tone}' tone."
       - MAGIC_OPERATOR_PORT=9000
 
   e2e-sidecar-c:
@@ -184,6 +172,8 @@ services:
       context: .
       dockerfile: Dockerfile
       target: sidecar
+    volumes:
+      - ./manifests/magic-combine/manifest.yaml:/config/manifest.yaml:ro
     environment:
       - CONSUL_HTTP_ADDR=http://e2e-consul:8500
       - SIDECAR_SERVICE_NAME=Magic Combine
@@ -191,11 +181,7 @@ services:
       - SIDECAR_PORT=8000
       - UPSTREAM_HOST=e2e-magic-c
       - UPSTREAM_PORT=9000
-      - OPERATOR_NAME=Magic Combine
-      - OPERATOR_VERSION=1.0.0
-      - OPERATOR_EXECUTION={"mode":"sync","protocol":"http","endpoint":"/execute"}
-      - OPERATOR_INPUTS=[{"name":"summary","type":"string","required":true},{"name":"tone","type":"string","required":true}]
-      - OPERATOR_OUTPUTS=[{"name":"message","type":"string","required":true}]
+      - OPERATOR_MANIFEST_PATH=/config/manifest.yaml
     depends_on:
       e2e-consul:
         condition: service_healthy

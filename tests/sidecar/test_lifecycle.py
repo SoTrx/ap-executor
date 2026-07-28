@@ -19,9 +19,9 @@ def _unused_proxy_transport(request: httpx.Request) -> httpx.Response:
     raise AssertionError("proxy should not be used in lifecycle tests")
 
 
-def test_register_then_deregister_in_order():
+def test_register_then_deregister_in_order(tmp_path):
     calls = []
-    config = load_config(base_env())
+    config = load_config(base_env(tmp_path))
     app = create_app(
         config,
         consul_http_factory=lambda cfg: httpx.AsyncClient(
@@ -38,11 +38,11 @@ def test_register_then_deregister_in_order():
     ]
 
 
-def test_startup_fails_if_register_fails():
+def test_startup_fails_if_register_fails(tmp_path):
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(500, text="boom")
 
-    config = load_config(base_env())
+    config = load_config(base_env(tmp_path))
     app = create_app(
         config,
         consul_http_factory=lambda cfg: httpx.AsyncClient(transport=httpx.MockTransport(handler)),
@@ -54,13 +54,13 @@ def test_startup_fails_if_register_fails():
             pass
 
 
-def test_shutdown_swallows_deregister_failure():
+def test_shutdown_swallows_deregister_failure(tmp_path):
     def handler(request: httpx.Request) -> httpx.Response:
         if request.method == "PUT" and request.url.path.startswith("/v1/agent/service/deregister"):
             return httpx.Response(500, text="boom")
         return httpx.Response(200)
 
-    config = load_config(base_env())
+    config = load_config(base_env(tmp_path))
     app = create_app(
         config,
         consul_http_factory=lambda cfg: httpx.AsyncClient(transport=httpx.MockTransport(handler)),

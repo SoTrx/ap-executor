@@ -1,0 +1,22 @@
+# Sidecar-facing OperatorManifest for "Magic Combine" (sync_http consumer:
+# summary + tone -> message). Mounted read-only into e2e-sidecar-c, path
+# given via OPERATOR_MANIFEST_PATH. Must stay consistent with
+# magic-operator.yaml's execution_mode in this same directory.
+manifest_version: "0.1.0"
+operator: Magic Combine
+version: "1.0.0"
+execution:
+  mode: sync
+  protocol: http
+  endpoint: /execute
+inputs:
+  - name: summary
+    type: string
+    required: true
+  - name: tone
+    type: string
+    required: true
+outputs:
+  - name: message
+    type: string
+    required: true

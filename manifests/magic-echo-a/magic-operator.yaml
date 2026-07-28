@@ -1,0 +1,12 @@
+# magic_operator's own declaration for "Magic Echo A". Mounted read-only into
+# e2e-magic-a, path given via MAGIC_OPERATOR_CONFIG_PATH. execution_mode
+# must stay consistent with manifest.yaml's execution.endpoint in this same
+# directory (sync_http here means "serves POST /execute").
+name: Magic Echo A
+execution_mode: sync_http
+output_name: summary
+prompt_template: "Summarize the topic: {topic}"
+inputs:
+  - name: topic
+    type: string
+    required: true

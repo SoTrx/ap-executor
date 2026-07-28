@@ -132,12 +132,12 @@ A downstream operator's input can come from either:
 
 ## 4. Pairing an operator with the reference sidecar
 
-Writing your own Consul registration/manifest-serving code is optional — this repo ships a generic, reusable sidecar (`sidecar/`) that any operator backend can run alongside to get step 1 and step 2 above for free, driven entirely by env vars.
+Writing your own Consul registration/manifest-serving code is optional — this repo ships a generic, reusable sidecar (`sidecar/`) that any operator backend can run alongside to get step 1 and step 2 above for free.
 
 The executor always calls exactly one `address:port` for everything (manifest fetch, execute, poll — the single address Consul hands back for a resolved instance, see `ServiceInstance.base_url`). So rather than being a bare registration helper, the sidecar is a **transparent reverse proxy**:
 
 - Consul registers the **sidecar's** own address:port, not the operator backend's.
-- The sidecar serves `GET /.well-known/operator.json` itself, directly from its own env-var config (see `sidecar/config.py`) — it is never proxied through to the operator, and never fetched from it.
+- The sidecar serves `GET /.well-known/operator.json` itself, directly from a mounted YAML file (`OPERATOR_MANIFEST_PATH`, see `sidecar/config.py`) that validates as an `OperatorManifest` — the same manifest content described in step 2 above, just its own artifact rather than decomposed into env vars. It is never proxied through to the operator, and never fetched from it. Deployment/topology settings (Consul address, advertised address, health-check timing) remain plain env vars — see `docs/docs/configuration.md`.
 - **Every other request** — any method, any path, including the operator's real execute/start/poll endpoints — is transparently forwarded to the real operator backend at a configured upstream `host:port`.
 - The sidecar registers once at startup with a Consul HTTP check pointed at its *own* address plus a `/health` path. Since `/health` isn't the manifest path, it falls through the catch-all proxy straight to the operator backend's own `GET /health` — **this is a new endpoint the operator backend must implement** (2xx = healthy) to pair with the sidecar; it's separate from the core manifest contract above. Consul's own agent does the health polling and, via `DeregisterCriticalServiceAfter`, auto-deregisters the instance if that check stays critical — the sidecar itself runs no custom polling loop. On top of that, the sidecar explicitly deregisters on SIGTERM/SIGINT as a graceful-shutdown belt-and-suspenders.
 
@@ -207,7 +207,7 @@ Finally, register the running instance in Consul under the slugified operator na
 
 ## `magic_operator/` — a fuller reference/test operator
 
-`magic_operator/` is a more complete reference operator than the minimal examples above: it validates its declared inputs, renders a customizable prompt template against them, calls an LLM through a pluggable provider (a deterministic `mock` provider by default — no network, no secrets, no cost — or a real `litellm`-backed provider as an opt-in extra), and returns the response as its single output. Its execution mode (`sync_http` or `async_http`) is chosen via `MAGIC_OPERATOR_EXECUTION_MODE` — see `docs/docs/configuration.md` for the full env var reference. It's always paired with the reference sidecar (`sidecar/`) exactly like a real operator would be.
+`magic_operator/` is a more complete reference operator than the minimal examples above: it validates its declared inputs, renders a customizable prompt template against them, calls an LLM through a pluggable provider (a deterministic `mock` provider by default — no network, no secrets, no cost — or a real `litellm`-backed provider as an opt-in extra), and returns the response as its single output. Its declaration — name, inputs, `execution_mode` (`sync_http` or `async_http`), prompt template — lives in a mounted YAML file (`MAGIC_OPERATOR_CONFIG_PATH`), the same pattern the sidecar uses for its own manifest — see `docs/docs/configuration.md` for the full reference. It's always paired with the reference sidecar (`sidecar/`) exactly like a real operator would be.
 
 It's used by the CI end-to-end test suite (`tests/e2e/`, `docker-compose.e2e.yml`) to exercise the executor's full HTTP contract for real — real Consul, real Dapr workflow, real HTTP, multiple operators wired together in one AP graph (`fixtures/composed/magic_e2e.json`) — proving the executor, the sidecar, and multi-operator dataflow wiring all work together, not just against in-process fakes. See `docs/docs/development.md` for how to run it locally.
 

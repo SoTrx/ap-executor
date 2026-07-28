@@ -1,16 +1,22 @@
-"""Sidecar configuration: everything is read from plain env vars, once, at
-process startup (mirrors the repo-wide ``os.getenv`` convention used across
-``ap_executor`` -- no settings framework). ``load_config`` raises
+"""Sidecar configuration: deployment/topology settings are plain env vars,
+once, at process startup (mirrors the repo-wide ``os.getenv`` convention used
+across ``ap_executor`` -- no settings framework). The operator's own
+manifest content (``manifest_version``, ``operator``, ``version``,
+``execution``, ``inputs``, ``outputs``) is NOT decomposed into env vars --
+it's read from a single mounted YAML file (``OPERATOR_MANIFEST_PATH``) that
+validates directly as an ``OperatorManifest``, portable as-is to a
+Kubernetes ``ConfigMap`` volume mount. ``load_config`` raises
 ``SidecarConfigError`` immediately on any missing/invalid value; callers
 (``sidecar/main.py``, ``sidecar/app.py``) call it eagerly, before binding a
 port or touching Consul.
 """
-import json
 import os
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Mapping, Optional
 
+import yaml
 from pydantic import ValidationError
 
 from ap_executor.services.operator_resolver.manifest.manifest import OperatorManifest
@@ -53,6 +59,23 @@ class SidecarConfig:
         return f"http://{self.advertise_address}:{self.advertise_port}{self.health_check_path}"
 
 
+def _load_manifest(path: str) -> OperatorManifest:
+    try:
+        raw_text = Path(path).read_text()
+    except OSError as exc:
+        raise SidecarConfigError(f"could not read OPERATOR_MANIFEST_PATH '{path}': {exc}") from exc
+
+    try:
+        raw = yaml.safe_load(raw_text)
+    except yaml.YAMLError as exc:
+        raise SidecarConfigError(f"OPERATOR_MANIFEST_PATH '{path}' is not valid YAML: {exc}") from exc
+
+    try:
+        return OperatorManifest.model_validate(raw)
+    except ValidationError as exc:
+        raise SidecarConfigError(f"manifest at '{path}' failed validation: {exc}") from exc
+
+
 def load_config(env: Optional[Mapping[str, str]] = None) -> SidecarConfig:
     e = env if env is not None else os.environ
 
@@ -62,11 +85,7 @@ def load_config(env: Optional[Mapping[str, str]] = None) -> SidecarConfig:
             raise SidecarConfigError(f"missing required environment variable '{name}'")
         return value
 
-    def parse_json(name: str, raw: str) -> object:
-        try:
-            return json.loads(raw)
-        except json.JSONDecodeError as exc:
-            raise SidecarConfigError(f"'{name}' is not valid JSON: {exc}") from exc
+    manifest = _load_manifest(require("OPERATOR_MANIFEST_PATH"))
 
     service_name = require("SIDECAR_SERVICE_NAME")
     service_slug = _slugify(service_name)
@@ -78,18 +97,6 @@ def load_config(env: Optional[Mapping[str, str]] = None) -> SidecarConfig:
 
     upstream_host = e.get("UPSTREAM_HOST", "localhost")
     upstream_port = require("UPSTREAM_PORT")
-
-    try:
-        manifest = OperatorManifest.model_validate({
-            "manifest_version": e.get("OPERATOR_MANIFEST_VERSION", "0.1.0"),
-            "operator": require("OPERATOR_NAME"),
-            "version": require("OPERATOR_VERSION"),
-            "execution": parse_json("OPERATOR_EXECUTION", require("OPERATOR_EXECUTION")),
-            "inputs": parse_json("OPERATOR_INPUTS", e.get("OPERATOR_INPUTS", "[]")),
-            "outputs": parse_json("OPERATOR_OUTPUTS", e.get("OPERATOR_OUTPUTS", "[]")),
-        })
-    except ValidationError as exc:
-        raise SidecarConfigError(f"OPERATOR_* fields failed manifest validation: {exc}") from exc
 
     return SidecarConfig(
         consul_addr=e.get("CONSUL_HTTP_ADDR", "http://localhost:8500").rstrip("/"),

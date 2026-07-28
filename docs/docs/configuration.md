@@ -19,7 +19,9 @@ Copy `.env.example` to `.env` and adjust as needed for your environment (e.g. po
 
 ## Operator Sidecar
 
-`sidecar/` (see [Registering an Operator](operators.md#4-pairing-an-operator-with-the-reference-sidecar)) is a separate process paired **1:1 with one operator instance** — not with the executor. Run it with `uv run python sidecar/main.py`. Its own env vars:
+`sidecar/` (see [Registering an Operator](operators.md#4-pairing-an-operator-with-the-reference-sidecar)) is a separate process paired **1:1 with one operator instance** — not with the executor. Run it with `uv run python sidecar/main.py`.
+
+The operator's own manifest content (`manifest_version`, `operator`, `version`, `execution`, `inputs`, `outputs`) is **not** decomposed into env vars — it's read from a single mounted YAML file that validates directly as an `OperatorManifest`, given via `OPERATOR_MANIFEST_PATH`. This keeps the manifest one portable artifact (a plain YAML file — a Docker Compose bind mount today, a Kubernetes `ConfigMap` volume mount tomorrow, no code change either way) instead of several JSON-blob env vars, and sidesteps shell/YAML quoting hazards entirely. See `manifests/magic-echo-a/manifest.yaml` for an example. Everything else — deployment topology, Consul registration, health-check timing — stays a plain env var, since it varies per deployment and isn't part of "what this operator is":
 
 | Variable | Default | Description |
 |---|---|---|
@@ -38,28 +40,21 @@ Copy `.env.example` to `.env` and adjust as needed for your environment (e.g. po
 | `SIDECAR_CONSUL_TIMEOUT_SECONDS` | `10` | httpx client timeout for the register/deregister calls |
 | `UPSTREAM_HOST` | `localhost` | Real operator backend host |
 | `UPSTREAM_PORT` | *(required)* | Real operator backend port |
-| `OPERATOR_MANIFEST_VERSION` | `0.1.0` | Manifest `manifest_version` |
-| `OPERATOR_NAME` | *(required)* | Manifest `operator` (descriptive) |
-| `OPERATOR_VERSION` | *(required)* | Manifest `version`, and Consul `Meta.version` |
-| `OPERATOR_EXECUTION` | *(required)* | JSON blob → manifest `execution` (discriminated union) |
-| `OPERATOR_INPUTS` | `[]` | JSON blob → manifest `inputs` |
-| `OPERATOR_OUTPUTS` | `[]` | JSON blob → manifest `outputs` |
+| `OPERATOR_MANIFEST_PATH` | *(required)* | Path to a mounted YAML file that validates as `OperatorManifest` |
 
 ## Magic Operator (reference/test)
 
 `magic_operator/` (see [`magic_operator/` — a fuller reference/test operator](operators.md#magic_operator--a-fuller-referencetest-operator)) is a separate process, paired 1:1 with a `sidecar/` instance just like a real operator. Run it with `uv run python magic_operator/main.py`.
 
+Like the sidecar, the operator's own declaration (name, inputs, execution mode, prompt template) is read from a single mounted YAML file given via `MAGIC_OPERATOR_CONFIG_PATH` — see `manifests/magic-echo-a/magic-operator.yaml` for an example. Its `execution_mode` must stay consistent with the paired sidecar manifest's `execution` field for the same operator instance (`sync_http` ↔ a manifest with `endpoint`; `async_http` ↔ one with `start_endpoint`/`poll_endpoint`) — see the comments in each `manifests/<operator>/` directory. LLM provider credentials and runtime settings stay plain env vars (never put `MAGIC_OPERATOR_LLM_API_KEY` in the mounted file — it's a secret, not manifest content):
+
 | Variable | Default | Description |
 |---|---|---|
-| `MAGIC_OPERATOR_NAME` | `Magic Operator` | descriptive name |
-| `MAGIC_OPERATOR_INPUTS` | `[]` | JSON array of `{name,type,required,default}` — the operator's own expected-inputs contract, validated on every request |
-| `MAGIC_OPERATOR_OUTPUT_NAME` | `response` | the single key the result dict is keyed under |
-| `MAGIC_OPERATOR_PROMPT_TEMPLATE` | *(required)* | `str.format`-style template; placeholders are the declared input names |
-| `MAGIC_OPERATOR_EXECUTION_MODE` | `sync_http` | `sync_http` (serves `POST /execute`) or `async_http` (serves `POST /jobs` + `GET /jobs/{id}`); `messaging` is rejected at startup — the executor's `ExecutionStrategyFactory` only supports `protocol: "http"` today |
+| `MAGIC_OPERATOR_CONFIG_PATH` | *(required)* | Path to a mounted YAML file with `name`, `execution_mode`, `output_name`, `prompt_template`, `inputs` |
 | `MAGIC_OPERATOR_LLM_PROVIDER` | `mock` | `mock` (deterministic, no network — the CI default) or `litellm` (real LLM call, requires the `llm` extra) |
 | `MAGIC_OPERATOR_LLM_MODEL` | — | required when `MAGIC_OPERATOR_LLM_PROVIDER=litellm` |
 | `MAGIC_OPERATOR_LLM_API_BASE` | *(unset)* | passed to `litellm.acompletion` |
-| `MAGIC_OPERATOR_LLM_API_KEY` | *(unset)* | omitted from the call entirely when unset |
+| `MAGIC_OPERATOR_LLM_API_KEY` | *(unset)* | omitted from the call entirely when unset — a secret, keep it out of the mounted config file |
 | `MAGIC_OPERATOR_LLM_TIMEOUT_SECONDS` | `30` | |
 | `MAGIC_OPERATOR_ASYNC_POLL_CYCLES` | `1` | number of `GET /jobs/{id}` calls that report `"running"` before `"done"` (no real delay — a counter, kept fast for CI) |
 | `MAGIC_OPERATOR_HOST` | `0.0.0.0` | bind host |

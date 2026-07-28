@@ -1,0 +1,19 @@
+# Sidecar-facing OperatorManifest for sidecar/examples/dummy_operator.py,
+# used by .devcontainer/docker-compose.yml's opt-in `sidecar-dev` profile
+# for local smoke-testing the sidecar against a plain (non-magic_operator)
+# reference operator.
+manifest_version: "0.1.0"
+operator: Text to SQL
+version: "1.0.0"
+execution:
+  mode: sync
+  protocol: http
+  endpoint: /execute
+inputs:
+  - name: nl
+    type: string
+    required: true
+outputs:
+  - name: query
+    type: string
+    required: true

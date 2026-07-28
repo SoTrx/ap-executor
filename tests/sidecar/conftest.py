@@ -4,17 +4,42 @@ from typing import Any, Dict
 import pytest
 from fastapi import FastAPI, Request
 
+DEFAULT_MANIFEST_YAML = """\
+manifest_version: "0.1.0"
+operator: Text to SQL
+version: "1.0.0"
+execution:
+  mode: sync
+  protocol: http
+  endpoint: /execute
+inputs:
+  - name: nl
+    type: string
+    required: true
+outputs:
+  - name: query
+    type: string
+    required: true
+"""
 
-def base_env(**overrides: str) -> Dict[str, str]:
+
+def write_manifest(tmp_path, content: str = DEFAULT_MANIFEST_YAML, filename: str = "manifest.yaml") -> str:
+    """Writes `content` to a real file under pytest's `tmp_path` and returns
+    its path -- mirrors how `OPERATOR_MANIFEST_PATH` is actually consumed in
+    production (a mounted file), rather than an in-memory shortcut."""
+    path = tmp_path / filename
+    path.write_text(content)
+    return str(path)
+
+
+def base_env(tmp_path, **overrides: str) -> Dict[str, str]:
     """A minimal, valid env mapping for `sidecar.config.load_config`; individual
     tests override/delete keys to exercise validation failures."""
     env = {
         "SIDECAR_SERVICE_NAME": "Text to SQL",
         "SIDECAR_ADVERTISE_ADDRESS": "sidecar.test",
         "UPSTREAM_PORT": "9000",
-        "OPERATOR_NAME": "Text to SQL",
-        "OPERATOR_VERSION": "1.0.0",
-        "OPERATOR_EXECUTION": '{"mode":"sync","protocol":"http","endpoint":"/execute"}',
+        "OPERATOR_MANIFEST_PATH": write_manifest(tmp_path),
     }
     env.update(overrides)
     return env

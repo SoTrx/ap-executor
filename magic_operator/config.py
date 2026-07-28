@@ -1,15 +1,21 @@
-"""Magic operator configuration: read from plain env vars, once, at process
-startup (mirrors `sidecar/config.py`'s fail-fast `os.getenv` convention). Also
-defines the fixed HTTP paths this operator serves in each execution mode --
-these MUST match whatever the paired sidecar's `OPERATOR_EXECUTION` env var
-declares for the same operator instance (see `docker-compose.e2e.yml`).
+"""Magic operator configuration: the operator's own declaration (name,
+inputs, execution mode, prompt template) lives in a single mounted YAML
+file (``MAGIC_OPERATOR_CONFIG_PATH``) -- portable as-is to a Kubernetes
+``ConfigMap`` volume mount. Deployment/runtime settings (LLM provider
+credentials, bind host/port) stay plain env vars, mirroring
+``sidecar/config.py``'s split between "what this operator is" (file) and
+"where/how it runs" (env vars). Also defines the fixed HTTP paths this
+operator serves in each execution mode -- these MUST match whatever the
+paired sidecar's manifest file declares for the same operator instance (see
+``docker-compose.e2e.yml``).
 """
-import json
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, List, Literal, Mapping, Optional
 
-from pydantic import BaseModel
+import yaml
+from pydantic import BaseModel, ValidationError
 
 from .errors import MagicOperatorConfigError
 
@@ -26,6 +32,15 @@ class InputSpec(BaseModel):
     type: str
     required: bool = True
     default: Optional[Any] = None
+
+
+class OperatorDeclaration(BaseModel):
+    """The shape of the file `MAGIC_OPERATOR_CONFIG_PATH` points at."""
+    name: str = "Magic Operator"
+    execution_mode: Literal["sync_http", "async_http"] = "sync_http"
+    output_name: str = "response"
+    prompt_template: str
+    inputs: List[InputSpec] = []
 
 
 @dataclass(frozen=True)
@@ -45,26 +60,42 @@ class MagicOperatorConfig:
     bind_port: int
 
 
-def load_config(env: Optional[Mapping[str, str]] = None) -> MagicOperatorConfig:
-    e = env if env is not None else os.environ
+def _load_declaration(path: str) -> OperatorDeclaration:
+    try:
+        raw_text = Path(path).read_text()
+    except OSError as exc:
+        raise MagicOperatorConfigError(f"could not read MAGIC_OPERATOR_CONFIG_PATH '{path}': {exc}") from exc
 
-    def parse_json(name: str, raw: str) -> object:
-        try:
-            return json.loads(raw)
-        except json.JSONDecodeError as exc:
-            raise MagicOperatorConfigError(f"'{name}' is not valid JSON: {exc}") from exc
+    try:
+        raw = yaml.safe_load(raw_text) or {}
+    except yaml.YAMLError as exc:
+        raise MagicOperatorConfigError(f"MAGIC_OPERATOR_CONFIG_PATH '{path}' is not valid YAML: {exc}") from exc
 
-    execution_mode = e.get("MAGIC_OPERATOR_EXECUTION_MODE", "sync_http")
+    execution_mode = raw.get("execution_mode", "sync_http")
     if execution_mode == "messaging":
         raise MagicOperatorConfigError(
-            "MAGIC_OPERATOR_EXECUTION_MODE=messaging is reserved but unsupported: the AP "
-            "Executor's ExecutionStrategyFactory only supports protocol='http' today, so a "
+            "execution_mode: messaging is reserved but unsupported: the AP Executor's "
+            "ExecutionStrategyFactory only supports protocol='http' today, so a "
             "messaging-based operator could never actually be invoked (see docs/docs/operators.md)."
         )
     if execution_mode not in _VALID_EXECUTION_MODES:
         raise MagicOperatorConfigError(
-            f"MAGIC_OPERATOR_EXECUTION_MODE must be one of {sorted(_VALID_EXECUTION_MODES)}, got '{execution_mode}'"
+            f"execution_mode must be one of {sorted(_VALID_EXECUTION_MODES)}, got '{execution_mode}'"
         )
+
+    try:
+        return OperatorDeclaration.model_validate(raw)
+    except ValidationError as exc:
+        raise MagicOperatorConfigError(f"config at '{path}' failed validation: {exc}") from exc
+
+
+def load_config(env: Optional[Mapping[str, str]] = None) -> MagicOperatorConfig:
+    e = env if env is not None else os.environ
+
+    config_path = e.get("MAGIC_OPERATOR_CONFIG_PATH")
+    if not config_path:
+        raise MagicOperatorConfigError("missing required environment variable 'MAGIC_OPERATOR_CONFIG_PATH'")
+    declaration = _load_declaration(config_path)
 
     llm_provider = e.get("MAGIC_OPERATOR_LLM_PROVIDER", "mock")
     if llm_provider not in ("mock", "litellm"):
@@ -74,19 +105,12 @@ def load_config(env: Optional[Mapping[str, str]] = None) -> MagicOperatorConfig:
     if llm_provider == "litellm" and not llm_model:
         raise MagicOperatorConfigError("MAGIC_OPERATOR_LLM_MODEL is required when MAGIC_OPERATOR_LLM_PROVIDER=litellm")
 
-    prompt_template = e.get("MAGIC_OPERATOR_PROMPT_TEMPLATE")
-    if not prompt_template:
-        raise MagicOperatorConfigError("missing required environment variable 'MAGIC_OPERATOR_PROMPT_TEMPLATE'")
-
-    raw_inputs = parse_json("MAGIC_OPERATOR_INPUTS", e.get("MAGIC_OPERATOR_INPUTS", "[]"))
-    inputs = [InputSpec.model_validate(i) for i in raw_inputs]
-
     return MagicOperatorConfig(
-        operator_name=e.get("MAGIC_OPERATOR_NAME", "Magic Operator"),
-        inputs=inputs,
-        output_name=e.get("MAGIC_OPERATOR_OUTPUT_NAME", "response"),
-        prompt_template=prompt_template,
-        execution_mode=execution_mode,
+        operator_name=declaration.name,
+        inputs=declaration.inputs,
+        output_name=declaration.output_name,
+        prompt_template=declaration.prompt_template,
+        execution_mode=declaration.execution_mode,
         llm_provider=llm_provider,
         llm_model=llm_model,
         llm_api_base=e.get("MAGIC_OPERATOR_LLM_API_BASE"),

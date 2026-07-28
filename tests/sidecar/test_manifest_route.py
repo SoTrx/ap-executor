@@ -16,8 +16,8 @@ def _unreachable_proxy_transport(request: httpx.Request) -> httpx.Response:
     raise AssertionError(f"proxy should not have been called for {request.url}")
 
 
-def test_manifest_served_from_config_not_proxied():
-    config = load_config(base_env())
+def test_manifest_served_from_config_not_proxied(tmp_path):
+    config = load_config(base_env(tmp_path))
     app = create_app(
         config,
         consul_http_factory=lambda cfg: httpx.AsyncClient(transport=httpx.MockTransport(_ok_consul_transport)),

@@ -1,0 +1,20 @@
+# Sidecar-facing OperatorManifest for "Magic Echo B" (async_http producer:
+# audience -> tone). Mounted read-only into e2e-sidecar-b, path given via
+# OPERATOR_MANIFEST_PATH. Must stay consistent with
+# magic-operator.yaml's execution_mode in this same directory.
+manifest_version: "0.1.0"
+operator: Magic Echo B
+version: "1.0.0"
+execution:
+  mode: async
+  protocol: http
+  start_endpoint: /jobs
+  poll_endpoint: /jobs/{id}
+inputs:
+  - name: audience
+    type: string
+    required: true
+outputs:
+  - name: tone
+    type: string
+    required: true
