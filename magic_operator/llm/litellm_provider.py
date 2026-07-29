@@ -11,10 +11,20 @@ import litellm
 
 
 class LiteLLMProvider:
-    def __init__(self, model: str, api_base: Optional[str], api_key: Optional[str], timeout: float):
+    def __init__(
+        self,
+        model: str,
+        api_base: Optional[str],
+        api_key: Optional[str],
+        timeout: float,
+        *,
+        ssl_verify: bool = True,
+    ):
         self._model = model
         self._api_base = api_base
         self._timeout = timeout
+        # Some LLM APIs use self-signed certificates (mirrors ap-management's LLM.__init__).
+        litellm.ssl_verify = ssl_verify
         # Omitted entirely when unset -- litellm complains if api_key=None is passed explicitly.
         self._extra_kwargs = {"api_key": api_key} if api_key else {}
 

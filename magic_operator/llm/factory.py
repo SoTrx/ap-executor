@@ -17,4 +17,5 @@ def build_llm_provider(config: MagicOperatorConfig) -> LLMProvider:
         api_base=config.llm_api_base,
         api_key=config.llm_api_key,
         timeout=config.llm_timeout_seconds,
+        ssl_verify=config.llm_ssl_verify,
     )

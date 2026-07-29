@@ -57,6 +57,7 @@ class MagicOperatorConfig:
     llm_model: Optional[str]
     llm_api_base: Optional[str]
     llm_api_key: Optional[str]
+    llm_ssl_verify: bool
     llm_timeout_seconds: float
     async_poll_cycles: int
     bind_host: str
@@ -104,9 +105,9 @@ def load_config(env: Optional[Mapping[str, str]] = None) -> MagicOperatorConfig:
     if llm_provider not in ("mock", "litellm"):
         raise MagicOperatorConfigError(f"MAGIC_OPERATOR_LLM_PROVIDER must be 'mock' or 'litellm', got '{llm_provider}'")
 
-    llm_model = e.get("MAGIC_OPERATOR_LLM_MODEL")
+    llm_model = e.get("LLM_API_MODEL")
     if llm_provider == "litellm" and not llm_model:
-        raise MagicOperatorConfigError("MAGIC_OPERATOR_LLM_MODEL is required when MAGIC_OPERATOR_LLM_PROVIDER=litellm")
+        raise MagicOperatorConfigError("LLM_API_MODEL is required when MAGIC_OPERATOR_LLM_PROVIDER=litellm")
 
     return MagicOperatorConfig(
         operator_name=declaration.name,
@@ -118,8 +119,9 @@ def load_config(env: Optional[Mapping[str, str]] = None) -> MagicOperatorConfig:
         execution_mode=declaration.execution_mode,
         llm_provider=llm_provider,
         llm_model=llm_model,
-        llm_api_base=e.get("MAGIC_OPERATOR_LLM_API_BASE"),
-        llm_api_key=e.get("MAGIC_OPERATOR_LLM_API_KEY"),
+        llm_api_base=e.get("LLM_API_BASE"),
+        llm_api_key=e.get("LLM_API_KEY"),
+        llm_ssl_verify=e.get("LLM_SSL_VERIFY", "true").lower() == "true",
         llm_timeout_seconds=float(e.get("MAGIC_OPERATOR_LLM_TIMEOUT_SECONDS", "30")),
         async_poll_cycles=int(e.get("MAGIC_OPERATOR_ASYNC_POLL_CYCLES", "1")),
         bind_host=e.get("MAGIC_OPERATOR_HOST", "0.0.0.0"),
