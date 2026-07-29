@@ -13,7 +13,7 @@ For each `Operator` node in the AP graph, in topological order (`ApInstance.iter
 3. **Filter inputs to the manifest's declared contract** — `_filter_inputs` (`workflows/operator_execution.py`) drops any resolved input the manifest doesn't declare, fills in declared defaults, and raises `OperatorExecutionError` (`services/executor/errors.py`) if a required input (no default) is still missing. This is the only validation the executor does on inputs before calling the operator.
 4. **Dispatch via the manifest's declared execution mode** — `ExecutionStrategyFactory.create(mode, protocol)` (`services/executor/strategies/factory.py`) picks `HttpSyncExecutionStrategy` or `HttpAsyncPollingExecutionStrategy`, which calls the operator over HTTP.
 5. **Poll until done** (async operators only) — the orchestrator itself owns the polling cadence (`POLL_INTERVAL = 5s`, `workflows/ap_execution.py`), calling the `poll_operator_activity` activity on a Dapr timer until the handle reports `done`. This is intentional: polling from inside the orchestrator (rather than blocking one activity call for the operator's whole duration) means a slow operator never ties up a worker slot, and each poll re-resolves nothing — it just re-checks the same job via the handle it already has.
-6. **Propagate the result** — on completion, the operator's output dict is written into `instance.state.parameters[operator_id]`, making it available to any downstream operator resolved later in the same run, and an `OperatorResult` (success or error) is appended to the execution's result list.
+6. **Propagate the result** — on completion, the operator's output dict is written into `instance.state[operator_id]`, making it available to any downstream operator resolved later in the same run, and an `OperatorResult` (success or error) is appended to the execution's result list.
 
 None of this is operator-specific configuration on the executor side — an operator becomes callable purely by satisfying the contract below.
 
@@ -127,7 +127,7 @@ It must be connected to the AP root node by a `consist_of` edge, and — for a m
 
 A downstream operator's input can come from either:
 
-- **A caller-supplied parameter** — placed directly in `state.parameters[operator_id]` on the `ApInstance` at execution time; no edge needed.
+- **A caller-supplied parameter** — placed directly in `state[operator_id]` on the `ApInstance` at execution time; no edge needed.
 - **Another operator's output** — an `output` edge from the producing operator to an intermediate `ResultType` node, and an `input` edge from that `ResultType` node to the consuming operator, each carrying a `properties.mapping` of `{target_expr: source_expr}` (e.g. `{"to['inputs']['sql']": "from['outputs']['query']"}`) — see `fixtures/composed/06_07.json` for a full worked example. Values wired in this way override a same-named caller parameter.
 
 ## 4. Registering an operator with Consul

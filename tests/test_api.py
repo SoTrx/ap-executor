@@ -124,14 +124,13 @@ def test_execute_sync_success(client):
 
     resp = client.post(
         "/api/v1/aps/execute",
-        json={"ap": SAMPLE_AP, "state": {
-            "parameters": {OPERATOR_ID: {"nl": "hi"}}}},
+        json={"ap": SAMPLE_AP, "state": {OPERATOR_ID: {"nl": "hi"}}},
     )
 
     assert resp.status_code == 200
     assert resp.json()["status"] == "success"
     # The instance's parameters reach the scheduled workflow input.
-    assert fake.scheduled_inputs[0].state.parameters == {
+    assert fake.scheduled_inputs[0].state == {
         OPERATOR_ID: {"nl": "hi"}}
 
 

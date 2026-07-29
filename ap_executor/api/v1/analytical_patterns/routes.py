@@ -13,7 +13,7 @@ router.add_api_route(
     execute_ap_sync,
     methods=["POST"],
     summary="Execute an AP synchronously",
-    description="Accepts an AP instance ({ap, metadata.parameters}), resolves operator execution order, injects parameters, and runs each operator. Returns the full result inline.",
+    description="Accepts an AP instance ({ap, state}), resolves operator execution order, injects parameters, and runs each operator. Returns the full result inline.",
 )
 router.add_api_route(
     "/execute/async",

@@ -79,7 +79,7 @@ def ap_execution_workflow(ctx: DaprWorkflowContext, instance: ApInstance):
             # Once the operator is done, add its output in the state
             # so it can propagate to any downstream operators
             if isinstance(handle.output, dict):
-                instance.state.parameters[str(operator.id)] = handle.output
+                instance.state[str(operator.id)] = handle.output
 
             operators.append(
                 OperatorResult(

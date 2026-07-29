@@ -12,11 +12,11 @@ SQL_PROVENANCE_ID = "68281dc0-9bb6-4caa-8bf8-b7d0054f1729"
 
 def _load_instance(name: str, parameters: dict) -> ApInstance:
     ap_json = json.loads((FIXTURES / name).read_text())
-    return ApInstance.model_validate({"ap": ap_json, "state": {"parameters": parameters}})
+    return ApInstance.model_validate({"ap": ap_json, "state": parameters})
 
 
 def test_leaf_input_comes_from_parameters():
-    """An operator with no upstream wiring gets its inputs straight from state.parameters[node_id]."""
+    """An operator with no upstream wiring gets its inputs straight from state[node_id]."""
     instance = _load_instance(
         "composed/01_02.json", {TEXT_TO_SQL_ID: {"nl": "show me all users"}}
     )

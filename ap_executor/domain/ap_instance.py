@@ -8,19 +8,15 @@ from moma_management.domain.generated.nodes.node_schema import Node
 from pydantic import BaseModel
 
 
-class ApInstanceMetadata(BaseModel):
-    """Runtime metadata carried alongside an AP instance.
-
-    ``parameters`` are namespaced by operator node id, mapping each operator's
-    input name to its caller-supplied value: ``{node_id: {input_name: value}}``.
-    """
-    parameters: Dict[str, Dict[str, Any]] = {}
-
-
 class ApInstance(BaseModel):
-    """An AP *instance*: an AP template plus the runtime values to execute it with."""
+    """An AP *instance*: an AP template plus the runtime values to execute it with.
+
+    ``state`` is namespaced by operator node id, mapping each operator's input
+    name to its caller-supplied value (or, once executed, its output):
+    ``{node_id: {name: value}}``.
+    """
     ap: AnalyticalPattern
-    state: ApInstanceMetadata = ApInstanceMetadata()
+    state: Dict[str, Dict[str, Any]] = {}
 
     def model_dump(self, **kwargs):
         """Serialize by alias by default.
@@ -87,7 +83,7 @@ class ApInstance(BaseModel):
         Upstream-mapped values overlay (override) any same-named caller parameter.
         """
         resolved: Dict[str, Any] = dict(
-            self.state.parameters.get(operator_id, {}))
+            self.state.get(operator_id, {}))
         output_index = self._output_index()
 
         for edge in self.ap.edges or []:
@@ -104,7 +100,7 @@ class ApInstance(BaseModel):
                 producer_id, output_name = output_index.get(
                     (str(edge.from_), source_field), (str(edge.from_), source_field)
                 )
-                producer_result = self.state.parameters.get(producer_id)
+                producer_result = self.state.get(producer_id)
                 if producer_result is not None and output_name in producer_result:
                     resolved[target_input] = producer_result[output_name]
 

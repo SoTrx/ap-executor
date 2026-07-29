@@ -4,7 +4,7 @@ Drives the real ``ap_execution_workflow`` orchestration generator against
 dummy operators (real FastAPI apps) discovered through a dummy in-memory
 Consul, all wired over a host-dispatching ASGI transport (no sockets). This
 exercises the full slice end-to-end: execution ordering, per-operator input
-resolution from the AP instance's ``state.parameters`` + upstream outputs,
+resolution from the AP instance's ``state`` + upstream outputs,
 Consul discovery, manifest fetch, strategy invocation, and result threading
 between operators.
 
@@ -160,7 +160,7 @@ async def _drive(generator):
 
 def _load_instance(name: str, parameters: dict) -> ApInstance:
     ap_json = json.loads((FIXTURES / name).read_text())
-    return ApInstance.model_validate({"ap": ap_json, "state": {"parameters": parameters}})
+    return ApInstance.model_validate({"ap": ap_json, "state": parameters})
 
 
 @pytest.fixture
@@ -238,7 +238,7 @@ async def test_ap_instance_async_operator_polls_through_orchestrator(operator_ap
         "edges": [{"from": ap_id, "to": op_id, "labels": ["consist_of"]}],
     }
     instance = ApInstance.model_validate(
-        {"ap": ap_json, "state": {"parameters": {op_id: {"payload": "go"}}}})
+        {"ap": ap_json, "state": {op_id: {"payload": "go"}}})
     result = await _drive(ap_execution_workflow(_FakeWorkflowContext(), instance))
 
     assert result.status == ExecutionStatus.SUCCESS

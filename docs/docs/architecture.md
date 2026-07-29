@@ -97,9 +97,9 @@ See [Registering an Operator](operators.md) for the full manifest schema, Consul
 `ApInstance` (`domain/ap_instance.py`) owns both graph concerns:
 
 1. `iter_operators()` — topological order over `Operator`-labeled nodes, using Kahn's algorithm on `follows` edges (predecessors run first). Operators without ordering constraints are appended in node-list order.
-2. `resolve_operator_input_values(operator_id)` — merges an operator's caller-supplied parameters (`state.parameters[operator_id]`) with any values wired in from upstream operators via `input`-labeled edges (whose `properties.mapping` may hop through an intermediate `ResultType` node reached by an `output`-labeled edge). Upstream-mapped values override same-named caller parameters.
+2. `resolve_operator_input_values(operator_id)` — merges an operator's caller-supplied parameters (`state[operator_id]`) with any values wired in from upstream operators via `input`-labeled edges (whose `properties.mapping` may hop through an intermediate `ResultType` node reached by an `output`-labeled edge). Upstream-mapped values override same-named caller parameters.
 
-The orchestrator calls `resolve_operator_input_values` right before dispatching each operator, and writes each operator's output back into `instance.state.parameters[operator_id]` once it completes, so it's visible to any downstream operator resolved afterwards in the same run.
+The orchestrator calls `resolve_operator_input_values` right before dispatching each operator, and writes each operator's output back into `instance.state[operator_id]` once it completes, so it's visible to any downstream operator resolved afterwards in the same run.
 
 ### Dependency Injection
 

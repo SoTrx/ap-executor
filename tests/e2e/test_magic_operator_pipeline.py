@@ -26,7 +26,7 @@ def test_three_operator_pipeline_sync_and_async(http_client, base_url):
     ap = json.loads(FIXTURE_PATH.read_text())
     body = {
         "ap": ap,
-        "state": {"parameters": {A_ID: {"topic": "solar power"}, B_ID: {"audience": "children"}}},
+        "state": {A_ID: {"topic": "solar power"}, B_ID: {"audience": "children"}},
     }
 
     resp = http_client.post(f"{base_url}/api/v1/aps/execute", json=body)
@@ -63,7 +63,7 @@ def test_missing_required_input_surfaces_as_operator_error(http_client, base_url
     (the executor's own `_filter_inputs` catches this before ever calling
     the operator), not a 200 with a bogus result."""
     ap = json.loads(FIXTURE_PATH.read_text())
-    body = {"ap": ap, "state": {"parameters": {B_ID: {"audience": "children"}}}}
+    body = {"ap": ap, "state": {B_ID: {"audience": "children"}}}
 
     resp = http_client.post(f"{base_url}/api/v1/aps/execute", json=body)
 
